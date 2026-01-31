@@ -1,0 +1,7 @@
+{
+	"name": "Schoology",
+	"description": "A secure private web browser with multi-tab support and privacy features",
+	"repository": "https://github.com/yourusername/schoology",
+	"logo": "https://asset-cdn.schoology.com/sites/all/themes/schoology_theme/favicon.ico",
+	"keywords": ["proxy", "privacy", "browser", "web"]
+}

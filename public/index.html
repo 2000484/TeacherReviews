@@ -1,0 +1,490 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, shrink-to-fit=no"
+		/>
+		<meta
+			name="description"
+			content="Schoology - A secure private web browser for accessing any website privately."
+		/>
+		<meta name="theme-color" content="#202124" />
+		<meta name="color-scheme" content="dark" />
+		<title>Schoology - Private Web Browser</title>
+	<link rel="icon" id="sj-favicon" href="favicon.ico" />
+
+		<script src="/scram/scramjet.all.js"></script>
+		<script src="/baremux/index.js"></script>
+
+		<link rel="stylesheet" href="index.css" />
+		<script src="register-sw.js" defer></script>
+		<script src="search.js" defer></script>
+		<script src="tests.js" defer></script>
+		<script src="index.js" defer></script>
+	</head>
+
+	<body>
+		<nav class="tab-bar">
+			<div class="tabs-container" id="sj-tabs">
+				<button
+					class="new-tab-btn"
+					id="sj-new-tab"
+					type="button"
+					title="New tab"
+				>
+					+
+				</button>
+			</div>
+		</nav>
+
+		<div class="nav-bar">
+			<div class="nav-controls">
+				<button
+					class="nav-btn"
+					id="sj-back"
+					type="button"
+					title="Back"
+					disabled
+				>
+					<svg
+						width="18"
+						height="18"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<path d="M19 12H5M12 19l-7-7 7-7" />
+					</svg>
+				</button>
+				<button
+					class="nav-btn"
+					id="sj-forward"
+					type="button"
+					title="Forward"
+					disabled
+				>
+					<svg
+						width="18"
+						height="18"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<path d="M5 12h14M12 5l7 7-7 7" />
+					</svg>
+				</button>
+				<button class="nav-btn" id="sj-reload" type="button" title="Reload">
+					<svg
+						width="18"
+						height="18"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<path
+							d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"
+						/>
+					</svg>
+				</button>
+				<button class="nav-btn" id="sj-home-nav" type="button" title="Home">
+					<svg
+						width="18"
+						height="18"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+						<polyline points="9 22 9 12 15 12 15 22" />
+					</svg>
+				</button>
+			</div>
+
+			<div class="omnibox-wrap">
+				<form class="omnibox" id="sj-omnibox">
+					<div class="omnibox-icon" id="sj-security-icon">
+						<svg
+							width="16"
+							height="16"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<circle cx="12" cy="12" r="10" />
+							<path d="M12 6v6l4 2" />
+						</svg>
+					</div>
+					<input
+						id="sj-omnibox-input"
+						type="text"
+						placeholder="Search Google or type a URL"
+						autocomplete="off"
+						spellcheck="false"
+					/>
+					<div class="omnibox-actions">
+						<button
+							class="omnibox-btn"
+							id="sj-bookmark"
+							type="button"
+							title="Bookmark this tab"
+						>
+							<svg
+								width="16"
+								height="16"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+							>
+								<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+							</svg>
+						</button>
+					</div>
+				</form>
+				<div
+					class="omnibox-suggestions"
+					id="sj-omnibox-suggestions"
+					hidden
+				></div>
+			</div>
+
+			<div class="browser-controls">
+				<button
+					class="browser-btn"
+					id="sj-shortcuts-btn"
+					type="button"
+					title="Keyboard shortcuts"
+				>
+					<svg
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<rect x="2" y="4" width="20" height="16" rx="2" />
+						<path
+							d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M6 16h12"
+						/>
+					</svg>
+				</button>
+				<button
+					class="browser-btn"
+					id="sj-settings-btn"
+					type="button"
+					title="Settings"
+				>
+					<svg
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<circle cx="12" cy="12" r="3" />
+						<path
+							d="M12 1v6m0 6v10M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h10M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"
+						/>
+					</svg>
+				</button>
+			</div>
+		</div>
+
+		<div class="content-container">
+			<div class="page" id="sj-home-page">
+				<header class="hero">
+					<div class="hero-logo">
+						<div>
+							<h1>Secure Proxy</h1>
+							<p class="subtitle">Private browsing, simplified</p>
+						</div>
+					</div>
+				</header>
+
+				<main class="new-tab-content">
+					<section class="quick-access">
+						<div class="quick-grid">
+							<button class="tile" data-quick-url="https://google.com">
+								<span>Google</span>
+							</button>
+							<button class="tile" data-quick-url="https://youtube.com">
+								<span>YouTube</span>
+							</button>
+							<button class="tile" data-quick-url="https://discord.com">
+								<span>Discord</span>
+							</button>
+							<button class="tile" data-quick-url="https://spotify.com">
+								<span>Spotify</span>
+							</button>
+							<button class="tile" data-quick-url="https://reddit.com">
+								<span>Reddit</span>
+							</button>
+							<button class="tile" data-quick-url="https://twitter.com">
+								<span>Twitter</span>
+							</button>
+							<button class="tile" data-quick-url="https://github.com">
+								<span>GitHub</span>
+							</button>
+							<button class="tile" data-quick-url="https://instagram.com">
+								<span>Instagram</span>
+							</button>
+							<button class="tile" data-quick-url="https://tiktok.com">
+								<span>TikTok</span>
+							</button>
+							<button class="tile" data-quick-url="https://twitch.tv">
+								<span>Twitch</span>
+							</button>
+							<button class="tile" data-quick-url="https://netflix.com">
+								<span>Netflix</span>
+							</button>
+							<button class="tile" data-quick-url="https://amazon.com">
+								<span>Amazon</span>
+							</button>
+							<button class="tile" data-quick-url="https://wikipedia.org">
+								<span>Wikipedia</span>
+							</button>
+							<button class="tile" data-quick-url="https://stackoverflow.com">
+								<span>Stack Overflow</span>
+							</button>
+							<button class="tile" data-quick-url="https://chess.com">
+								<span>Chess.com</span>
+							</button>
+							<button class="tile" data-quick-url="https://coolmathgames.com">
+								<span>Cool Math Games</span>
+							</button>
+						</div>
+					</section>
+
+					<section class="bookmarks-section">
+						<h3>Bookmarks</h3>
+						<div id="sj-bookmarks" class="bookmark-list"></div>
+					</section>
+
+					<section class="recent-section">
+					<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+						<h3 style="margin: 0;">Recently visited</h3>
+						<button id="sj-clear-history" type="button" class="btn ghost" style="padding: 4px 8px; font-size: 0.75rem;">Clear all</button>
+					</div>
+						<div id="sj-recent" class="recent-list"></div>
+					</section>
+				</main>
+
+				<footer>
+					<div>
+						<a title="License information" href="credits.html">Credits</a>
+					</div>
+					<div>
+						<span>© 2024-2026 Schoology. All rights reserved.</span>
+					</div>
+				</footer>
+			</div>
+
+			<div id="sj-tabs-content"></div>
+		</div>
+
+		<div class="loading-bar" id="sj-loading-bar" hidden></div>
+		<div class="click-loading" id="sj-click-loading" hidden>
+			<div class="spinner"></div>
+			<span>Working…</span>
+		</div>
+
+		<div class="keyboard-shortcuts-modal" id="sj-shortcuts-modal" hidden>
+			<div class="modal-overlay" id="sj-shortcuts-overlay"></div>
+			<div class="modal-content">
+				<div class="modal-header">
+					<h2>Keyboard shortcuts</h2>
+					<button class="modal-close" id="sj-shortcuts-close" type="button">
+						×
+					</button>
+				</div>
+				<div class="modal-body shortcuts-grid">
+					<div class="shortcut-item">
+						<div class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>T</kbd></div>
+						<div class="shortcut-desc">New tab</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>W</kbd></div>
+						<div class="shortcut-desc">Close tab</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>L</kbd></div>
+						<div class="shortcut-desc">Focus address bar</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>R</kbd></div>
+						<div class="shortcut-desc">Reload page</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Tab</kbd></div>
+						<div class="shortcut-desc">Next tab</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys">
+							<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd>
+						</div>
+						<div class="shortcut-desc">Previous tab</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>1-8</kbd></div>
+						<div class="shortcut-desc">Jump to tab</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>9</kbd></div>
+						<div class="shortcut-desc">Last tab</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys">
+							<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd>
+						</div>
+						<div class="shortcut-desc">Reopen closed tab</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys"><kbd>F11</kbd></div>
+						<div class="shortcut-desc">Fullscreen</div>
+					</div>
+					<div class="shortcut-item">
+						<div class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>/</kbd></div>
+						<div class="shortcut-desc">Show shortcuts</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="tab-context-menu" id="sj-tab-context" hidden>
+			<button class="context-item" data-action="reload">Reload</button>
+			<button class="context-item" data-action="duplicate">Duplicate</button>
+			<button class="context-item" data-action="pin">Pin tab</button>
+			<hr />
+			<button class="context-item" data-action="close">Close</button>
+			<button class="context-item" data-action="close-others">
+				Close other tabs
+			</button>
+			<button class="context-item" data-action="close-right">
+				Close tabs to the right
+			</button>
+		</div>
+
+		<div class="settings-modal" id="sj-settings-modal" hidden>
+			<div class="modal-overlay" id="sj-modal-overlay"></div>
+			<div class="modal-content">
+				<div class="modal-header">
+					<h2>Settings</h2>
+					<button class="modal-close" id="sj-modal-close" type="button">
+						×
+					</button>
+				</div>
+				<div class="modal-body">
+					<div class="status-row">
+						<span id="sj-sw-status" class="status-badge neutral">
+							Service worker: idle
+						</span>
+						<span id="sj-transport-status" class="status-badge neutral">
+							Transport: idle
+						</span>
+					</div>
+
+					<div class="settings-section">
+						<h3>Search</h3>
+						<div class="settings-grid">
+							<label>
+								<span>Search engine</span>
+								<select id="sj-search-engine-select">
+									<option value="google">Google</option>
+									<option value="duckduckgo">DuckDuckGo</option>
+									<option value="brave">Brave</option>
+									<option value="startpage">Startpage</option>
+									<option value="custom">Custom</option>
+								</select>
+							</label>
+							<label id="sj-custom-search-wrap">
+								<span>Custom search template</span>
+								<input
+									id="sj-search-engine"
+									type="text"
+									value="https://www.google.com/search?q=%s"
+								/>
+							</label>
+							<label class="toggle-label">
+								<input id="sj-auto-https" type="checkbox" checked />
+								<span>Auto HTTPS</span>
+							</label>
+							<label class="toggle-label">
+								<input id="sj-remember" type="checkbox" checked />
+								<span>Remember history</span>
+							</label>
+						</div>
+					</div>
+
+					<div class="settings-section">
+						<h3>Bookmarks</h3>
+						<div class="settings-grid">
+							<label>
+								<span>Add bookmark</span>
+								<div class="bookmark-input-group">
+									<input id="sj-bookmark-url" type="url" placeholder="https://example.com" />
+									<input id="sj-bookmark-name" type="text" placeholder="Bookmark name" />
+									<button id="sj-add-bookmark" class="btn ghost" type="button">
+										Add
+									</button>
+								</div>
+							</label>
+							<div id="sj-bookmarks-manage" class="bookmarks-manage"></div>
+						</div>
+					</div>
+
+					<div class="settings-section">
+						<h3>Tab Cloaking</h3>
+						<div class="settings-grid">
+							<label>
+								<span>Tab title</span>
+								<input id="sj-cloak-title" type="text" placeholder="Optional" />
+							</label>
+							<label>
+								<span>Tab icon URL</span>
+								<input id="sj-cloak-icon" type="url" placeholder="Optional" />
+							</label>
+							<div class="settings-actions">
+								<button id="sj-apply-cloak" class="btn ghost" type="button">
+									Apply cloak
+								</button>
+								<button id="sj-reset-cloak" class="btn ghost" type="button">
+									Reset cloak
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="startup-banner" id="sj-startup-modal" hidden>
+			<div class="startup-content">
+				<div class="startup-header">
+					<h2>Privacy options</h2>
+					<p>Choose cloaking and fullscreen (recommended for shortcuts).</p>
+				</div>
+				<div class="startup-actions">
+					<button class="btn" id="sj-startup-cloak" type="button">
+						Cloak (about:blank)
+					</button>
+					<button class="btn" id="sj-startup-fullscreen" type="button">
+						Fullscreen
+					</button>
+					<button class="btn" id="sj-startup-both" type="button">Both</button>
+					<button class="btn ghost" id="sj-startup-skip" type="button">
+						Dismiss
+					</button>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

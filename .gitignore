@@ -1,0 +1,17 @@
+node_modules/
+.DS_Store
+dist/
+build/
+*.log
+.env
+.env.local
+.env.*.local
+.cache/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.pnpm-debug.log*
+scramjet/
+README_OLD.md

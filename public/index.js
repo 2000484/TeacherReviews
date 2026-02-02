@@ -1149,6 +1149,8 @@ async function ensureTransport() {
 			await connection.setTransport("/libcurl/index.mjs", [
 				{ 
 					websocket: wispUrl,
+					// Try wsproxy transport for simpler connection handling
+					transport: "wsproxy",
 					sslVerifyPeer: false,
 					sslVerifyHost: false,
 					connectTimeout: 90,
@@ -1156,13 +1158,15 @@ async function ensureTransport() {
 					httpVersion: "1.1",
 					followLocation: true,
 					maxRedirs: 10,
+					// Add connection pool settings
+					connections: [30, 20, 5], // [hard limit, cache limit, per-host limit]
 					// Add more buffer and lowspeed options
 					bufferSize: 524288, // 512KB
 					lowSpeedLimit: 1,  // 1 byte/s minimum
 					lowSpeedTime: 30, // for 30 seconds
 				},
 			]);
-			console.log("Transport: libcurl initialized");
+			console.log("Transport: libcurl+wsproxy initialized");
 		} catch (err) {
 			console.error("Failed to initialize libcurl transport:", err);
 			showError("Transport initialization failed", err?.message);

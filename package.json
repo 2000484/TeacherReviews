@@ -1,7 +1,7 @@
 {
 	"name": "schoology",
 	"version": "1.0.0",
-	"description": "Schoology - A secure private web proxy for accessing any website anonymously.",
+	"description": "Crocs - A secure private web proxy for accessing any website anonymously.",
 	"type": "module",
 	"engines": {
 		"npm": ">=7.0.0",
@@ -15,7 +15,7 @@
 		"lint:fix": "eslint ./src/ --fix"
 	},
 	"keywords": [
-		"proxy",
+		"crocs",
 		"privacy",
 		"web-browser",
 		"bypass"

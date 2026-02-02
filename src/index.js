@@ -16,8 +16,12 @@ const publicPath = fileURLToPath(new URL("../public/", import.meta.url));
 logging.set_level(logging.NONE);
 Object.assign(wisp.options, {
 	allow_udp_streams: false,
-	hostname_blacklist: [/example\.com/],
-	dns_servers: ["8.8.8.8", "8.8.4.4"],
+	// Don't blacklist any hosts - allow all connections
+	hostname_blacklist: [],
+	// Use multiple DNS servers for better connectivity
+	dns_servers: ["8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1"],
+	// Disable certificate pinning for development
+	tls_verify: false,
 });
 
 // Get the host for Scramjet configuration

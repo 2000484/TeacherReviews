@@ -1151,8 +1151,16 @@ async function ensureTransport() {
 				sslVerifyPeer: false,
 				sslVerifyHost: false,
 				// Add connection timeout and retry options for better connectivity
-				connectTimeout: 30,
-				timeout: 60,
+				connectTimeout: 60,
+				timeout: 120,
+				// Force HTTP/1.1 for better compatibility
+				httpVersion: "1.1",
+				// Enable verbose logging for debugging
+				verbose: false,
+				// Set follow location for redirects
+				followLocation: true,
+				// Max redirects
+				maxRedirs: 5,
 			},
 		]);
 	}

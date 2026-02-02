@@ -14,15 +14,18 @@ const publicPath = fileURLToPath(new URL("../public/", import.meta.url));
 // Wisp Configuration: Refer to the documentation at https://www.npmjs.com/package/@mercuryworkshop/wisp-js
 
 // Enable verbose logging to debug connection issues
-logging.set_level(logging.INFO);
+logging.set_level(logging.DEBUG);
 Object.assign(wisp.options, {
 	allow_udp_streams: false,
 	// Don't blacklist any hosts - allow all connections
 	hostname_blacklist: [],
 	// Use multiple DNS servers for better connectivity
-	dns_servers: ["8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1"],
+	dns_servers: ["8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "9.9.9.9"],
 	// Disable certificate pinning for development
 	tls_verify: false,
+	// Add timeout settings
+	tcp_timeout_ms: 30000,
+	dns_timeout_ms: 10000,
 });
 
 // Get the host for Scramjet configuration

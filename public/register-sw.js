@@ -22,6 +22,12 @@ async function registerSW() {
 	}
 
 	try {
+		// Dev helper: clear old registrations on localhost to avoid stale workers
+		if (swAllowedHostnames.includes(location.hostname)) {
+			const registrations = await navigator.serviceWorker.getRegistrations();
+			await Promise.all(registrations.map((reg) => reg.unregister()));
+		}
+
 		const registration = await navigator.serviceWorker.register(stockSW);
 		console.log("Service Worker registered successfully:", registration.scope);
 		return registration;

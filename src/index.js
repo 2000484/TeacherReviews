@@ -18,7 +18,6 @@ Object.assign(wisp.options, {
 	allow_udp_streams: false,
 	hostname_blacklist: [/example\.com/],
 	dns_servers: ["8.8.8.8", "8.8.4.4"],
-	revealer: "top.location",
 });
 
 // Get the host for Scramjet configuration

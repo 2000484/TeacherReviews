@@ -64,7 +64,8 @@ const scramjet = new ScramjetController({
 		sync: "/scram/scramjet.sync.js",
 	},
 	config: {
-		revealer: "top.location",
+		// Don't use revealer to avoid blocking JavaScript execution
+		// revealer: "top.location",
 	},
 });
 

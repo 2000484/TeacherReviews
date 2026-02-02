@@ -1097,7 +1097,13 @@ async function ensureTransport() {
 
 	if ((await connection.getTransport()) !== "/libcurl/index.mjs") {
 		await connection.setTransport("/libcurl/index.mjs", [
-			{ websocket: wispUrl },
+			{ 
+				websocket: wispUrl,
+				// Disable SSL verification for development environments
+				// This fixes "SSL peer certificate was not OK" errors
+				sslVerifyPeer: false,
+				sslVerifyHost: false
+			},
 		]);
 	}
 

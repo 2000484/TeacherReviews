@@ -20,6 +20,8 @@ A secure, fast, and feature-rich web browser with privacy-first design. Access a
 
 ## 🚀 Quick Start
 
+> **New to this project?** Check out [GETTING_STARTED.md](GETTING_STARTED.md) for a quick guide on setting up your development environment!
+
 ### Requirements
 
 - Node.js 16+ (18+ recommended)

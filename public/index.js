@@ -1018,6 +1018,17 @@ async function loadUrlInTab(id, url) {
 				updateTabUI(id);
 				console.error("Frame error:", e);
 			});
+
+			// Track navigation within the frame to update URL bar
+			if (tab.frame.on) {
+				tab.frame.on("navigation", (url) => {
+					tab.url = url;
+					if (id === activeTabId) {
+						updateOmnibox();
+					}
+					updateTabUI(id);
+				});
+			}
 		} catch (err) {
 			loadingBar.hidden = true;
 			showError("Failed to initialize frame", err?.message || String(err));
@@ -1034,6 +1045,7 @@ async function loadUrlInTab(id, url) {
 
 	try {
 		tab.frame.go(url);
+		console.log(`[Tab ${id}] Navigating to: ${url}`);
 
 		setTimeout(() => {
 			try {

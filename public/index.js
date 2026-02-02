@@ -1142,27 +1142,45 @@ async function ensureTransport() {
 		location.host +
 		"/wisp/";
 
-	if ((await connection.getTransport()) !== "/libcurl/index.mjs") {
-		await connection.setTransport("/libcurl/index.mjs", [
-			{ 
-				websocket: wispUrl,
-				// Disable SSL verification for development environments
-				// This fixes "SSL peer certificate was not OK" errors
-				sslVerifyPeer: false,
-				sslVerifyHost: false,
-				// Add connection timeout and retry options for better connectivity
-				connectTimeout: 60,
-				timeout: 120,
-				// Force HTTP/1.1 for better compatibility
-				httpVersion: "1.1",
-				// Enable verbose logging for debugging
-				verbose: false,
-				// Set follow location for redirects
-				followLocation: true,
-				// Max redirects
-				maxRedirs: 5,
-			},
-		]);
+	const currentTransport = await connection.getTransport();
+	
+	try {
+		// Try to use bare transport (HTTP) first - more stable than libcurl
+		if (currentTransport !== "/baremux/bare.mjs") {
+			await connection.setTransport("/baremux/bare.mjs", [
+				{ 
+					http: `${location.protocol}//${location.host}`,
+					https: `${location.protocol}//${location.host}`,
+					ws: `ws://${location.host}`,
+					wss: `wss://${location.host}`,
+				},
+			]);
+			console.log("Transport: Using Bare");
+		}
+	} catch (err) {
+		console.warn("Bare transport failed, trying libcurl:", err);
+		
+		try {
+			// Fallback to libcurl with aggressive options
+			if (currentTransport !== "/libcurl/index.mjs") {
+				await connection.setTransport("/libcurl/index.mjs", [
+					{ 
+						websocket: wispUrl,
+						sslVerifyPeer: false,
+						sslVerifyHost: false,
+						connectTimeout: 60,
+						timeout: 120,
+						httpVersion: "1.1",
+						followLocation: true,
+						maxRedirs: 5,
+					},
+				]);
+				console.log("Transport: Using libcurl");
+			}
+		} catch (libcurlErr) {
+			console.error("Both transports failed:", libcurlErr);
+			showError("Failed to initialize transport", libcurlErr?.message);
+		}
 	}
 
 	isTransportReady = true;

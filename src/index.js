@@ -8,6 +8,18 @@ import { scramjetPath } from "@mercuryworkshop/scramjet/path";
 import { libcurlPath } from "@mercuryworkshop/libcurl-transport";
 import { baremuxPath } from "@mercuryworkshop/bare-mux/node";
 
+// Disable SSL verification globally for libcurl
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+process.env.CURL_CA_BUNDLE = "";
+process.env.REQUESTS_CA_BUNDLE = "";
+process.env.SSL_CERT_FILE = "";
+process.env.SSL_KEY_FILE = "";
+process.env.OPENSSL_CONF = "";
+process.env.CURL_CA_BUNDLE = "";
+process.env.REQUESTS_CA_BUNDLE = "";
+process.env.SSL_CERT_FILE = "";
+process.env.SSL_KEY_FILE = "";
+
 const publicPath = fileURLToPath(new URL("../public/", import.meta.url));
 
 // Wisp Configuration: Refer to the documentation at https://www.npmjs.com/package/@mercuryworkshop/wisp-js
@@ -22,6 +34,19 @@ Object.assign(wisp.options, {
 	tls_verify: false,
 	ssl_verify_peer: false,
 	ssl_verify_host: false,
+	tls_insecure: true,
+	no_certificate_verify: true,
+	cainfo: false,
+	verifypeer: false,
+	verifyhost: false,
+	insecure: true,
+	sslverifypeer: false,
+	sslverifyhost: false,
+	// Force accept all certificates
+	ssl_verifypeer: 0,
+	ssl_verifyhost: 0,
+	accept_insecure_certs: true,
+	allow_insecure: true,
 	// Increase timeout settings for better reliability
 	tcp_timeout_ms: 120000, // 2 minutes
 	dns_timeout_ms: 60000,  // 1 minute
@@ -39,6 +64,11 @@ Object.assign(wisp.options, {
 		"authorization",
 		"cookie",
 		"content-type",
+		"spotify-app-version",
+		"x-spotify-app-version",
+		"sec-fetch-dest",
+		"sec-fetch-mode",
+		"sec-fetch-site",
 	],
 });
 
@@ -88,6 +118,10 @@ fastify.addHook("onRequest", (request, reply, done) => {
 		"Permissions-Policy",
 		"camera=(), microphone=(), geolocation=(), payment=()"
 	);
+	// For Spotify specifically, don't block certain headers
+	reply.header("Access-Control-Allow-Origin", "*");
+	reply.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH");
+	reply.header("Access-Control-Allow-Headers", "*");
 	done();
 });
 
@@ -119,6 +153,74 @@ fastify.register(fastifyStatic, {
 	decorateReply: false,
 	maxAge: "7d",
 	immutable: true,
+});
+
+// Special HTTPS proxy for Spotify with disabled SSL verification
+fastify.all("/spotify-proxy/*", async (request, reply) => {
+	const https = await import("node:https");
+	const url = require("node:url");
+	
+	try {
+		const encodedUrl = request.url.substring("/spotify-proxy/".length);
+		const spotifyUrl = decodeURIComponent(encodedUrl) || "https://open.spotify.com/";
+		const parsedUrl = url.parse(spotifyUrl);
+		
+		const options = {
+			hostname: parsedUrl.hostname,
+			path: parsedUrl.path,
+			method: request.method,
+			headers: {
+				...request.headers,
+				host: parsedUrl.hostname,
+				"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+				"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+				"accept-language": "en-US,en;q=0.9",
+				"cache-control": "max-age=0",
+				"upgrade-insecure-requests": "1",
+				"x-forwarded-for": undefined,
+				"x-forwarded-proto": undefined,
+				"x-forwarded-host": undefined,
+				"x-original-forwarded-for": undefined,
+				"cf-connecting-ip": undefined,
+				"cf-ipcountry": undefined,
+			},
+			rejectUnauthorized: false,
+			checkServerIdentity: () => undefined,
+		};
+		
+		// Remove proxy-related headers
+		delete options.headers["x-forwarded-for"];
+		delete options.headers["x-forwarded-proto"];
+		delete options.headers["x-forwarded-host"];
+		delete options.headers["x-original-forwarded-for"];
+		delete options.headers["cf-connecting-ip"];
+		delete options.headers["cf-ipcountry"];
+		delete options.headers["via"];
+		delete options.headers["connection"];
+		
+		return new Promise((resolve, reject) => {
+			const req = https.request(options, (res) => {
+				// Strip proxy-revealing headers from response
+				delete res.headers["via"];
+				delete res.headers["x-cache"];
+				
+				reply.code(res.statusCode);
+				Object.keys(res.headers).forEach(key => {
+					reply.header(key, res.headers[key]);
+				});
+				res.pipe(reply.raw);
+			});
+			
+			req.on("error", (err) => {
+				reply.code(500).send({ error: err.message });
+				reject(err);
+			});
+			
+			request.raw.pipe(req);
+		});
+	} catch (err) {
+		reply.code(500).send({ error: err.message });
+	}
 });
 
 // Route handler for Scramjet iframe proxy

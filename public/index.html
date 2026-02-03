@@ -210,9 +210,20 @@
 					</div>
 				</header>
 
-				<main class="new-tab-content">
+				<nav class="home-nav">
+					<button class="home-nav-btn active" data-nav="home">Home</button>
+					<button class="home-nav-btn" data-nav="apps">Apps</button>
+					<button class="home-nav-btn" data-nav="games">Games</button>
+					<button class="home-nav-btn" data-nav="chat">Chat</button>
+				</nav>
+
+				<!-- Home Page -->
+				<div class="new-tab-content" id="sj-home-content">
 					<section class="quick-access">
 						<div class="quick-grid">
+							<button class="tile" data-quick-url="https://open.spotify.com/">
+								<span>Spotify</span>
+							</button>
 							<button class="tile" data-quick-url="https://duckduckgo.com">
 								<span>DuckDuckGo</span>
 							</button>
@@ -221,9 +232,6 @@
 							</button>
 							<button class="tile" data-quick-url="https://discord.com">
 								<span>Discord</span>
-							</button>
-							<button class="tile" data-quick-url="https://spotify.com">
-								<span>Spotify</span>
 							</button>
 							<button class="tile" data-quick-url="https://reddit.com">
 								<span>Reddit</span>
@@ -276,7 +284,147 @@
 					</div>
 						<div id="sj-recent" class="recent-list"></div>
 					</section>
-				</main>
+				</div>
+
+				<!-- Apps Page -->
+				<div class="new-tab-content" id="sj-apps-content" hidden>
+					<section class="apps-section">
+						<h2>Applications</h2>
+						<div class="apps-grid">
+							<a href="https://mail.google.com" class="app-tile" target="_self">
+								<div class="app-icon">📧</div>
+								<span>Gmail</span>
+							</a>
+							<a href="https://docs.google.com" class="app-tile" target="_self">
+								<div class="app-icon">📄</div>
+								<span>Google Docs</span>
+							</a>
+							<a href="https://sheets.google.com" class="app-tile" target="_self">
+								<div class="app-icon">📊</div>
+								<span>Google Sheets</span>
+							</a>
+							<a href="https://slides.google.com" class="app-tile" target="_self">
+								<div class="app-icon">🎨</div>
+								<span>Google Slides</span>
+							</a>
+							<a href="https://drive.google.com" class="app-tile" target="_self">
+								<div class="app-icon">☁️</div>
+								<span>Google Drive</span>
+							</a>
+							<a href="https://calendar.google.com" class="app-tile" target="_self">
+								<div class="app-icon">📅</div>
+								<span>Google Calendar</span>
+							</a>
+							<a href="https://photos.google.com" class="app-tile" target="_self">
+								<div class="app-icon">🖼️</div>
+								<span>Google Photos</span>
+							</a>
+							<a href="https://keep.google.com" class="app-tile" target="_self">
+								<div class="app-icon">📝</div>
+								<span>Google Keep</span>
+							</a>
+							<a href="https://web.whatsapp.com" class="app-tile" target="_self">
+								<div class="app-icon">💬</div>
+								<span>WhatsApp Web</span>
+							</a>
+							<a href="https://web.telegram.org" class="app-tile" target="_self">
+								<div class="app-icon">✈️</div>
+								<span>Telegram</span>
+							</a>
+							<a href="https://notion.so" class="app-tile" target="_self">
+								<div class="app-icon">📋</div>
+								<span>Notion</span>
+							</a>
+							<a href="https://figma.com" class="app-tile" target="_self">
+								<div class="app-icon">🎭</div>
+								<span>Figma</span>
+							</a>
+							<a href="https://music.youtube.com" class="app-tile" target="_self">
+								<div class="app-icon">🎵</div>
+								<span>YouTube Music</span>
+							</a>
+							<a href="https://web.spotify.com" class="app-tile" target="_self">
+								<div class="app-icon">🎧</div>
+								<span>Spotify</span>
+							</a>
+						</div>
+					</section>
+				</div>
+
+				<!-- Games Page -->
+				<div class="new-tab-content" id="sj-games-content" hidden>
+					<section class="games-section">
+						<h2>Games</h2>
+						<div class="games-grid">
+							<a href="https://www.coolmathgames.com" class="game-tile" target="_self">
+								<div class="game-icon">🎮</div>
+								<span>Cool Math Games</span>
+							</a>
+							<a href="https://pogo.com" class="game-tile" target="_self">
+								<div class="game-icon">🃏</div>
+								<span>Pogo</span>
+							</a>
+							<a href="https://www.miniclip.com" class="game-tile" target="_self">
+								<div class="game-icon">🎯</div>
+								<span>Miniclip</span>
+							</a>
+							<a href="https://www.kongregate.com" class="game-tile" target="_self">
+								<div class="game-icon">👾</div>
+								<span>Kongregate</span>
+							</a>
+							<a href="https://www.y8.com" class="game-tile" target="_self">
+								<div class="game-icon">🎲</div>
+								<span>Y8 Games</span>
+							</a>
+							<a href="https://www.friv.com" class="game-tile" target="_self">
+								<div class="game-icon">🎪</div>
+								<span>Friv</span>
+							</a>
+							<a href="https://www.newgrounds.com" class="game-tile" target="_self">
+								<div class="game-icon">⚡</div>
+								<span>Newgrounds</span>
+							</a>
+							<a href="https://slither.io" class="game-tile" target="_self">
+								<div class="game-icon">🐍</div>
+								<span>Slither.io</span>
+							</a>
+							<a href="https://agar.io" class="game-tile" target="_self">
+								<div class="game-icon">⚫</div>
+								<span>Agar.io</span>
+							</a>
+							<a href="https://diep.io" class="game-tile" target="_self">
+								<div class="game-icon">🎯</div>
+								<span>Diep.io</span>
+							</a>
+							<a href="https://www.playretro.com" class="game-tile" target="_self">
+								<div class="game-icon">🕹️</div>
+								<span>Play Retro</span>
+							</a>
+							<a href="https://www.crazygames.com" class="game-tile" target="_self">
+								<div class="game-icon">🎨</div>
+								<span>Crazy Games</span>
+							</a>
+						</div>
+					</section>
+				</div>
+
+				<!-- Chat Page -->
+				<div class="new-tab-content" id="sj-chat-content" hidden>
+					<section class="chat-section">
+						<h2>Live Chat</h2>
+						<div class="chat-container">
+							<div class="chat-messages" id="sj-chat-messages"></div>
+							<div class="chat-input-area">
+								<input type="text" id="sj-chat-name" placeholder="Your name" maxlength="30" />
+								<div class="chat-input-group">
+									<input type="text" id="sj-chat-input" placeholder="Type a message..." maxlength="200" />
+									<button id="sj-chat-send" class="btn">Send</button>
+								</div>
+								<div class="chat-status" id="sj-chat-status"></div>
+							</div>
+						</div>
+					</section>
+				</div>
 
 				<footer>
 					<div>

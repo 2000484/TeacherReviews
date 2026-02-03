@@ -49,6 +49,26 @@ const addBookmarkButton = document.getElementById("sj-add-bookmark");
 const bookmarksList = document.getElementById("sj-bookmarks");
 const bookmarksManage = document.getElementById("sj-bookmarks-manage");
 
+// Home navigation elements
+const homeNavButtons = document.querySelectorAll(".home-nav-btn");
+const homeContent = document.getElementById("sj-home-content");
+const appsContent = document.getElementById("sj-apps-content");
+const gamesContent = document.getElementById("sj-games-content");
+const chatContent = document.getElementById("sj-chat-content");
+
+// Chat elements
+const chatMessages = document.getElementById("sj-chat-messages");
+const chatNameInput = document.getElementById("sj-chat-name");
+const chatInput = document.getElementById("sj-chat-input");
+const chatSendButton = document.getElementById("sj-chat-send");
+const chatStatus = document.getElementById("sj-chat-status");
+
+// Chat state
+let lastMessageTime = 0;
+const MESSAGE_COOLDOWN = 10000; // 10 seconds in milliseconds
+const usedNames = new Set();
+let currentUserName = "";
+
 // Initialize activeFrame and homeButton variables (for legacy frame handling)
 let activeFrame = null;
 const homeButton = homeNavButton; // Alias for backward compatibility
@@ -93,6 +113,42 @@ async function ensureScramjet() {
 					sourcemaps: false,
 					allowInvalidJs: true,
 					allowFailedIntercepts: true,
+					// Additional flags to help bypass Spotify detection
+					inlineScripts: true,
+					inlineCSS: true,
+					corsProxy: true,
+					// Aggressive SSL bypass for Spotify
+					ignoreHttpsErrors: true,
+					disableSecurity: true,
+					unsafeAllowURIInscripts: true,
+				},
+				// Inject anti-proxy-detection code
+				injection: {
+					code: `
+						// Bypass Spotify proxy detection
+						window.navigator.__defineGetter__('webdriver', () => false);
+						Object.defineProperty(navigator, 'webdriver', { value: false, writable: false });
+						
+						// Spoof performance metrics to look normal
+						window.performance.navigation = undefined;
+						
+						// Hide proxy indicators
+						Object.defineProperty(navigator, 'plugins', {
+							get: () => [1, 2, 3, 4, 5],
+						});
+						
+						// Make requests look direct
+						const originalFetch = window.fetch;
+						window.fetch = function(...args) {
+							if (args[1]) {
+								args[1].headers = args[1].headers || {};
+								delete args[1].headers['x-forwarded-for'];
+								delete args[1].headers['x-forwarded-proto'];
+								delete args[1].headers['via'];
+							}
+							return originalFetch.apply(this, args);
+						};
+					`,
 				},
 			});
 			scramjetReady = true;
@@ -140,6 +196,10 @@ const defaultTitle = document.title;
 const defaultFavicon = favicon?.getAttribute("href") || "";
 
 function toScramjetUrl(url) {
+	// Use direct HTTPS proxy for Spotify to bypass SSL issues
+	if (url.includes("spotify.com")) {
+		return `/spotify-proxy/${encodeURIComponent(url)}`;
+	}
 	return `/scramjet/${encodeURIComponent(url)}`;
 }
 
@@ -1699,7 +1759,6 @@ window.addEventListener("keydown", (event) => {
 		requestFullscreen();
 	}
 });
-
 quickLinks.forEach((link) => {
 	link.addEventListener("click", () => {
 		const url = link.getAttribute("data-quick-url");
@@ -1846,4 +1905,126 @@ if (clearHistoryButton) {
 	clearHistoryButton.addEventListener("click", clearAllRecent);
 }
 
-showStartupModal();
+// Home navigation functionality
+function switchHomeTab(tab) {
+	homeContent.hidden = tab !== "home";
+	appsContent.hidden = tab !== "apps";
+	gamesContent.hidden = tab !== "games";
+	chatContent.hidden = tab !== "chat";
+
+	homeNavButtons.forEach((btn) => {
+		btn.classList.toggle("active", btn.getAttribute("data-nav") === tab);
+	});
+}
+
+homeNavButtons.forEach((btn) => {
+	btn.addEventListener("click", () => {
+		switchHomeTab(btn.getAttribute("data-nav"));
+	});
+});
+
+// Chat functionality
+function sendChatMessage() {
+	const name = chatNameInput.value.trim();
+	const message = chatInput.value.trim();
+
+	if (!name) {
+		chatStatus.textContent = "❌ Please enter your name";
+		chatStatus.style.color = "var(--danger)";
+		setTimeout(() => (chatStatus.textContent = ""), 3000);
+		return;
+	}
+
+	if (!message) {
+		chatStatus.textContent = "❌ Message cannot be empty";
+		chatStatus.style.color = "var(--danger)";
+		setTimeout(() => (chatStatus.textContent = ""), 3000);
+		return;
+	}
+
+	const now = Date.now();
+	if (now - lastMessageTime < MESSAGE_COOLDOWN) {
+		const remaining = Math.ceil((MESSAGE_COOLDOWN - (now - lastMessageTime)) / 1000);
+		chatStatus.textContent = `⏳ Wait ${remaining}s before sending another message`;
+		chatStatus.style.color = "var(--warning)";
+		return;
+	}
+
+	// Check if name is unique (locally for now)
+	if (!currentUserName) {
+		currentUserName = name;
+		usedNames.add(name.toLowerCase());
+	} else if (currentUserName !== name) {
+		chatStatus.textContent = "❌ You must keep the same name in this session";
+		chatStatus.style.color = "var(--danger)";
+		setTimeout(() => (chatStatus.textContent = ""), 3000);
+		return;
+	}
+
+	// Add message to chat
+	const messageEl = document.createElement("div");
+	messageEl.className = "chat-message own";
+	messageEl.innerHTML = `
+		<div>
+			<div class="chat-message-author">${name}</div>
+			<div class="chat-message-text">${escapeHtml(message)}</div>
+		</div>
+	`;
+	chatMessages.appendChild(messageEl);
+	chatMessages.scrollTop = chatMessages.scrollHeight;
+
+	// Save message to localStorage
+	const chatHistory = JSON.parse(localStorage.getItem("chatHistory") || "[]");
+	chatHistory.push({
+		name,
+		message,
+		timestamp: now,
+		own: true,
+	});
+	localStorage.setItem("chatHistory", JSON.stringify(chatHistory));
+
+	// Reset input
+	chatInput.value = "";
+	chatStatus.textContent = "✓ Message sent";
+	chatStatus.style.color = "var(--success)";
+	setTimeout(() => (chatStatus.textContent = ""), 2000);
+
+	lastMessageTime = now;
+}
+
+function escapeHtml(text) {
+	const div = document.createElement("div");
+	div.textContent = text;
+	return div.innerHTML;
+}
+
+function loadChatHistory() {
+	const chatHistory = JSON.parse(localStorage.getItem("chatHistory") || "[]");
+	chatMessages.innerHTML = "";
+
+	chatHistory.forEach((msg) => {
+		const messageEl = document.createElement("div");
+		messageEl.className = `chat-message ${msg.own ? "own" : ""}`;
+		messageEl.innerHTML = `
+			<div>
+				<div class="chat-message-author">${escapeHtml(msg.name)}</div>
+				<div class="chat-message-text">${escapeHtml(msg.message)}</div>
+			</div>
+		`;
+		chatMessages.appendChild(messageEl);
+	});
+
+	chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Chat event listeners
+chatSendButton.addEventListener("click", sendChatMessage);
+chatInput.addEventListener("keypress", (e) => {
+	if (e.key === "Enter") {
+		sendChatMessage();
+	}
+});
+
+// Load chat history on startup
+loadChatHistory();
+

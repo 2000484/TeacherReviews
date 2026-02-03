@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap");
-
 :root {
 	color-scheme: dark;
 	--bg: #202124;
@@ -17,6 +15,7 @@
 	--success: #81c995;
 	--shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3),
 		0 1px 3px 1px rgba(60, 64, 67, 0.15);
+	--font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 @keyframes slideIn {
@@ -38,6 +37,42 @@
 	to {
 		transform: translateX(400px);
 		opacity: 0;
+	}
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes fadeOut {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+@keyframes spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
 	}
 }
 
@@ -63,7 +98,7 @@ a,
 }
 
 body {
-	font-family: "Roboto", Arial, sans-serif;
+	font-family: var(--font-family);
 	margin: 0;
 	background: var(--bg);
 	color: var(--text);
@@ -1343,5 +1378,69 @@ footer a:hover {
 }
 
 .credit input:checked ~ pre {
+	display: block;
+}
+/* Clear cache button styles */
+.btn.danger {
+	background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+	color: white;
+	border: 1px solid #ff5252;
+}
+
+.btn.danger:hover {
+	background: linear-gradient(135deg, #ff5252 0%, #ee3a4f 100%);
+	box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+}
+
+.btn.danger:active {
+	opacity: 0.9;
+}
+
+.btn.danger:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+	background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+}
+
+.clear-status {
+	display: inline-block;
+	margin-left: 12px;
+	padding: 4px 12px;
+	border-radius: 16px;
+	font-size: 0.875rem;
+	font-weight: 500;
+	animation: slideIn 0.2s ease-out;
+}
+
+.clear-status.clearing {
+	background: var(--surface-variant);
+	color: var(--text-secondary);
+}
+
+.clear-status.success {
+	background: #d4edda;
+	color: #155724;
+}
+
+.clear-status.error {
+	background: #f8d7da;
+	color: #721c24;
+}
+
+@keyframes slideIn {
+	from {
+		opacity: 0;
+		transform: translateX(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+.settings-description {
+	font-size: 0.875rem;
+	color: var(--text-secondary);
+	margin-bottom: 12px;
 	display: block;
 }

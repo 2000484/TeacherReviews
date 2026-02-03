@@ -213,8 +213,7 @@ Potential features for future releases:
 4. Advanced URL parsing for special cases
 5. Keyboard shortcuts for bookmarking
 6. Bookmark search/filtering
-7. Analytics on most-used bookmarks
-8. Integration with browser history
+7. Integration with browser history
 
 ## Support
 

@@ -69,29 +69,53 @@ const scramjet = new ScramjetController({
 	},
 });
 
-(async () => {
-	try {
-		await scramjet.init();
-		await scramjet.modifyConfig({
-			flags: {
-				strictRewrites: false,
-				rewriterLogs: false,
-				captureErrors: false,
-				cleanErrors: true,
-				sourcemaps: false,
-				allowInvalidJs: true,
-				allowFailedIntercepts: true,
-			},
-		});
-	} catch (err) {
-		console.warn("Scramjet init/config failed:", err);
+const idleCallback = (cb, timeout = 1200) => {
+	if (typeof window.requestIdleCallback === "function") {
+		return window.requestIdleCallback(cb, { timeout });
 	}
-})();
+	return setTimeout(cb, timeout);
+};
+
+let scramjetInitPromise = null;
+let scramjetReady = false;
+
+async function ensureScramjet() {
+	if (scramjetReady) return;
+	if (!scramjetInitPromise) {
+		scramjetInitPromise = (async () => {
+			await scramjet.init();
+			await scramjet.modifyConfig({
+				flags: {
+					strictRewrites: false,
+					rewriterLogs: false,
+					captureErrors: false,
+					cleanErrors: true,
+					sourcemaps: false,
+					allowInvalidJs: true,
+					allowFailedIntercepts: true,
+				},
+			});
+			scramjetReady = true;
+		})();
+	}
+	return scramjetInitPromise;
+}
+
+function scheduleScramjetWarmup() {
+	if (typeof window.requestIdleCallback !== "function") return;
+	window.requestIdleCallback(
+		() => {
+			ensureScramjet().catch((err) => {
+				console.warn("Scramjet init/config failed:", err);
+			});
+		},
+		{ timeout: 1500 }
+	);
+}
 
 const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
 
 const SEARCH_ENGINES = {
-	google: "https://www.google.com/search?q=%s",
 	duckduckgo: "https://duckduckgo.com/?q=%s",
 	brave: "https://search.brave.com/search?q=%s",
 	startpage: "https://www.startpage.com/search?q=%s",
@@ -742,6 +766,13 @@ function renderRecent() {
 }
 
 function createTab(url = null, isHome = true) {
+	// Enforce maximum tab limit
+	const maxTabs = typeof _CONFIG !== 'undefined' && _CONFIG?.ui?.maxTabs ? _CONFIG.ui.maxTabs : 20;
+	if (tabs.size >= maxTabs) {
+		showError(`Maximum ${maxTabs} tabs allowed`, "Close some tabs before opening new ones");
+		return null;
+	}
+	
 	const id = ++tabIdCounter;
 
 	const tab = {
@@ -878,28 +909,34 @@ function createTab(url = null, isHome = true) {
 function switchTab(id) {
 	if (activeTabId === id) return;
 
+	// Hide all tabs and wrappers first
 	tabs.forEach((tab) => {
 		tab.element?.classList.remove("active");
 		if (tab.wrapper) tab.wrapper.classList.remove("active");
 	});
 
 	const tab = tabs.get(id);
-	if (!tab) return;
+	if (!tab) {
+		console.warn(`Cannot switch to non-existent tab ${id}`);
+		return;
+	}
 
 	activeTabId = id;
 	tab.element?.classList.add("active");
 
 	if (tab.isHome) {
 		homePage.hidden = false;
-		if (tab.wrapper) tab.wrapper.classList.remove("active");
 		loadingBar.hidden = true;
 	} else {
 		homePage.hidden = true;
-		if (tab.wrapper) tab.wrapper.classList.add("active");
+		if (tab.wrapper) {
+			tab.wrapper.classList.add("active");
+		}
 	}
 
 	updateOmnibox();
 	updateBackForwardButtons();
+	console.log(`[Tab ${id}] Switched to tab: ${tab.title}`);
 }
 
 function closeTab(id) {
@@ -982,13 +1019,18 @@ function handleContextAction(action) {
 
 	switch (action) {
 		case "reload":
-			if (!tab.isHome && tab.frame) {
-				tab.frame.frame.contentWindow?.location.reload();
+			if (!tab.isHome && tab.frame && tab.url) {
+				loadingBar.hidden = false;
+				tab.frame.go(tab.url);
+				setTimeout(() => {
+					loadingBar.hidden = true;
+				}, 2000);
 			}
 			break;
 		case "duplicate":
 			if (!tab.isHome && tab.url) {
-				createTab(tab.url, false);
+				const newTabId = createTab(tab.url, false);
+				console.log(`[Tab ${tab.id}] Duplicated to new tab ${newTabId}`);
 			}
 			break;
 		case "pin":
@@ -1040,6 +1082,13 @@ async function loadUrlInTab(id, url) {
 
 	if (!tab.frame) {
 		try {
+			await ensureScramjet();
+			// Clear any existing URL monitor before creating new frame
+			if (tab.urlMonitor) {
+				clearInterval(tab.urlMonitor);
+				tab.urlMonitor = null;
+			}
+			
 			tab.frame = scramjet.createFrame();
 			if (!tab.frame) {
 				throw new Error("Failed to create frame");
@@ -1053,43 +1102,43 @@ async function loadUrlInTab(id, url) {
 				loadingBar.hidden = true;
 				updateTabUI(id);
 			
-			// Extract and update the URL from the iframe
-			try {
-				const iframeSrc = tab.frame.frame.src;
-				if (iframeSrc && iframeSrc.includes('/scramjet/')) {
-					// Extract the encoded URL from the Scramjet proxy path
-					const match = iframeSrc.match(/\/scramjet\/([^?#]+)/);
-					if (match && match[1]) {
-						try {
-							const decodedUrl = decodeURIComponent(match[1]);
-							tab.url = decodedUrl;
-							console.log(`[Tab ${id}] Decoded URL from iframe: ${decodedUrl}`);
-						} catch (e) {
-							console.warn("Failed to decode URL:", e);
+				// Extract and update the URL from the iframe
+				try {
+					const iframeSrc = tab.frame.frame.src;
+					if (iframeSrc && iframeSrc.includes('/scramjet/')) {
+						// Extract the encoded URL from the Scramjet proxy path
+						const match = iframeSrc.match(/\/scramjet\/([^?#]+)/);
+						if (match && match[1]) {
+							try {
+								const decodedUrl = decodeURIComponent(match[1]);
+								tab.url = decodedUrl;
+								console.log(`[Tab ${id}] Page loaded: ${decodedUrl}`);
+							} catch (e) {
+								console.warn("Failed to decode URL:", e);
+							}
 						}
 					}
+				} catch (err) {
+					console.log("Could not extract URL from iframe:", err.message);
 				}
-			} catch (err) {
-				console.log("Could not extract URL from iframe:", err.message);
-			}
 			
-			updateOmnibox();
-			
-			// Track URL changes within the iframe
-			try {
-				const contentWindow = tab.frame.frame.contentWindow;
-				if (contentWindow) {
-					// Listen for history changes
-					contentWindow.addEventListener("popstate", () => {
-						if (id === activeTabId) {
-							updateOmnibox();
-						}
-					});
+				updateOmnibox();
+				
+				// Track URL changes within the iframe
+				try {
+					const contentWindow = tab.frame.frame.contentWindow;
+					if (contentWindow) {
+						// Listen for history changes
+						contentWindow.addEventListener("popstate", () => {
+							if (id === activeTabId) {
+								updateOmnibox();
+							}
+						});
+					}
+				} catch (err) {
+					console.warn("Unable to attach popstate listener:", err);
 				}
-			} catch (err) {
-				console.warn("Unable to attach popstate listener:", err);
-			}
-		});
+			});
 
 			tab.frame.frame.addEventListener("error", (e) => {
 				loadingBar.hidden = true;
@@ -1114,6 +1163,13 @@ async function loadUrlInTab(id, url) {
 	try {
 		tab.frame.go(url);
 		tab.url = url; // Ensure tab URL is updated immediately
+		
+		// Initialize navigation history immediately
+		if (tab.navigationHistory.length === 0) {
+			tab.navigationHistory = [url];
+			tab.currentHistoryIndex = 0;
+		}
+		
 		console.log(`[Tab ${id}] Navigating to: ${url}`);
 		
 		// Set up URL monitoring to track navigation changes
@@ -1128,12 +1184,7 @@ async function loadUrlInTab(id, url) {
 					const match = iframeSrc.match(/\/scramjet\/([^?#]+)/);
 					if (match && match[1]) {
 						const decodedUrl = decodeURIComponent(match[1]);
-						// Initialize history on first URL detection if empty
-						if (tab.navigationHistory.length === 0) {
-							tab.navigationHistory = [decodedUrl];
-							tab.currentHistoryIndex = 0;
-							updateBackForwardButtons();
-						} else if (decodedUrl !== tab.url) {
+						if (decodedUrl !== tab.url) {
 							tab.url = decodedUrl;
 							// Only update navigation history if we're not navigating within existing history
 							if (!tab.isNavigatingWithinHistory) {
@@ -1154,8 +1205,8 @@ async function loadUrlInTab(id, url) {
 			try {
 				const hostname = new URL(url).hostname;
 				tab.title = hostname;
-				const faviconUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
-				tab.favicon = isSwReady ? toScramjetUrl(faviconUrl) : (defaultFavicon || "/favicon.ico");
+				// Use local favicon only - no external tracking services like Google
+				tab.favicon = defaultFavicon || "/favicon.ico";
 				updateTabUI(id);
 				updateOmnibox();
 				
@@ -1196,12 +1247,22 @@ function updateTabUI(id) {
 	const titleEl = tab.element.querySelector(".tab-title");
 	const faviconEl = tab.element.querySelector(".tab-favicon");
 
+	// Use textContent for security (prevents XSS)
 	if (titleEl) titleEl.textContent = tab.title;
 	if (faviconEl) {
 		faviconEl.onerror = () => {
 			faviconEl.src = defaultFavicon || "/favicon.ico";
 		};
-		faviconEl.src = tab.favicon;
+		// Validate favicon URL before setting
+		try {
+			if (tab.favicon && (tab.favicon.startsWith('http') || tab.favicon.startsWith('/'))) {
+				faviconEl.src = tab.favicon;
+			} else {
+				faviconEl.src = defaultFavicon || "/favicon.ico";
+			}
+		} catch (err) {
+			faviconEl.src = defaultFavicon || "/favicon.ico";
+		}
 	}
 }
 
@@ -1214,15 +1275,20 @@ function closeFrame() {
 	homeButton.hidden = true;
 }
 
-function startFrame(url) {
-	if (!activeFrame) {
-		activeFrame = scramjet.createFrame();
-		activeFrame.frame.id = "sj-frame";
-		document.body.appendChild(activeFrame.frame);
+async function startFrame(url) {
+	try {
+		await ensureScramjet();
+		if (!activeFrame) {
+			activeFrame = scramjet.createFrame();
+			activeFrame.frame.id = "sj-frame";
+			document.body.appendChild(activeFrame.frame);
+		}
+		document.body.classList.add("proxy-active");
+		homeButton.hidden = false;
+		activeFrame.go(url);
+	} catch (err) {
+		showError("Failed to start proxy frame", err?.message || String(err));
 	}
-	document.body.classList.add("proxy-active");
-	homeButton.hidden = false;
-	activeFrame.go(url);
 }
 
 async function ensureTransport() {
@@ -1234,53 +1300,29 @@ async function ensureTransport() {
 		"://" +
 		location.host +
 		"/wisp/";
-	const wsproxyUrl =
-		(location.protocol === "https:" ? "wss" : "ws") +
-		"://" +
-		location.host +
-		"/wsproxy/";
 
-	const currentTransport = await connection.getTransport();
-	
-	if (currentTransport !== "/libcurl/index.mjs") {
-		try {
+	try {
+		const currentTransport = await connection.getTransport();
+		
+		if (currentTransport !== "/libcurl/index.mjs") {
 			console.log("Initializing libcurl transport with wisp:", wispUrl);
 			
-			// Try with wisp instead of wsproxy for better compatibility
 			await connection.setTransport("/libcurl/index.mjs", [
 				{ 
-					websocket: wispUrl,
-					// Use wisp transport for better compatibility
-					transport: "wisp",
-					sslVerifyPeer: false,
-					sslVerifyHost: false,
-					connectTimeout: 120,
-					timeout: 240,
-					httpVersion: "1.1",
-					followLocation: true,
-					maxRedirs: 10,
-					// Add connection pool settings
-					connections: [50, 30, 10], // [hard limit, cache limit, per-host limit]
-					// Add more buffer and lowspeed options
-					bufferSize: 1048576, // 1MB buffer
-					lowSpeedLimit: 1,  // 1 byte/s minimum
-					lowSpeedTime: 60, // for 60 seconds
-					// Enable verbose mode for debugging
-					verbose: true,
-					// DNS settings
-					dnsServers: ["8.8.8.8", "8.8.4.4", "1.1.1.1"],
-				},
+					wisp: wispUrl,
+				}
 			]);
 			console.log("Transport: libcurl+wisp initialized successfully");
-		} catch (err) {
-			console.error("Failed to initialize libcurl transport:", err);
-			console.error("Error stack:", err?.stack);
-			showError("Transport initialization failed", err?.message || "Unknown error");
 		}
-	}
 
-	isTransportReady = true;
-	setBadge(transportStatus, "Transport: ready", "good");
+		isTransportReady = true;
+		setBadge(transportStatus, "Transport: ready", "good");
+	} catch (err) {
+		console.error("Failed to initialize transport:", err);
+		console.error("Error details:", err?.message, err?.stack);
+		setBadge(transportStatus, "Transport: failed", "bad");
+		throw new Error(`Transport initialization failed: ${err?.message || "Unknown error"}`);
+	}
 }
 
 async function ensureSW() {
@@ -1364,8 +1406,9 @@ omniboxForm.addEventListener("submit", async (event) => {
 	}
 
 	// Validate input length
-	if (input.length > 2048) {
-		showError("URL or search term is too long.");
+	const maxLength = typeof _CONFIG !== 'undefined' && _CONFIG?.security?.maxUrlLength ? _CONFIG.security.maxUrlLength : 2048;
+	if (input.length > maxLength) {
+		showError(`URL or search term is too long (max ${maxLength} characters).`);
 		return;
 	}
 
@@ -1413,11 +1456,16 @@ omniboxForm.addEventListener("submit", async (event) => {
 		if (currentTab?.isHome) {
 			await loadUrlInTab(activeTabId, url);
 		} else {
-			createTab(url, false);
+			const newTabId = createTab(url, false);
+			if (!newTabId) {
+				// Tab creation failed (hit limit), load in current tab instead
+				if (currentTab && !currentTab.isHome) {
+					await loadUrlInTab(activeTabId, url);
+				}
+			}
 		}
 
 		addRecent(url);
-		showSuccess("Page loaded");
 	} catch (err) {
 		showError("Failed to load page.", err?.message || String(err));
 	}
@@ -1447,7 +1495,7 @@ resetCloakButton.addEventListener("click", resetCloak);
 backButton.addEventListener("click", async () => {
 	showClickLoading();
 	const tab = tabs.get(activeTabId);
-	if (!tab) return;
+	if (!tab || !tab.frame) return;
 
 	// Navigate through our tracked history
 	if (tab.currentHistoryIndex > 0) {
@@ -1456,25 +1504,25 @@ backButton.addEventListener("click", async () => {
 		tab.url = urlToLoad;
 		tab.isNavigatingWithinHistory = true;
 		updateOmnibox();
+		updateBackForwardButtons();
 		try {
-			if (tab.frame) {
-				tab.frame.go(urlToLoad);
-			}
+			tab.frame.go(urlToLoad);
+			console.log(`[Tab ${tab.id}] Back to: ${urlToLoad}`);
 		} catch (err) {
 			console.error("Error navigating back:", err);
+			showError("Failed to navigate back", err?.message);
 		}
-		// Reset flag after a brief delay to allow the navigation to register
+		// Reset flag after navigation completes
 		setTimeout(() => {
 			tab.isNavigatingWithinHistory = false;
-		}, 100);
-		updateBackForwardButtons();
+		}, 1000);
 	}
 });
 
 forwardButton.addEventListener("click", async () => {
 	showClickLoading();
 	const tab = tabs.get(activeTabId);
-	if (!tab) return;
+	if (!tab || !tab.frame) return;
 
 	// Navigate through our tracked history
 	if (tab.currentHistoryIndex < tab.navigationHistory.length - 1) {
@@ -1483,18 +1531,18 @@ forwardButton.addEventListener("click", async () => {
 		tab.url = urlToLoad;
 		tab.isNavigatingWithinHistory = true;
 		updateOmnibox();
+		updateBackForwardButtons();
 		try {
-			if (tab.frame) {
-				tab.frame.go(urlToLoad);
-			}
+			tab.frame.go(urlToLoad);
+			console.log(`[Tab ${tab.id}] Forward to: ${urlToLoad}`);
 		} catch (err) {
 			console.error("Error navigating forward:", err);
+			showError("Failed to navigate forward", err?.message);
 		}
-		// Reset flag after a brief delay to allow the navigation to register
+		// Reset flag after navigation completes
 		setTimeout(() => {
 			tab.isNavigatingWithinHistory = false;
-		}, 100);
-		updateBackForwardButtons();
+		}, 1000);
 	}
 });
 
@@ -1503,12 +1551,28 @@ reloadButton.addEventListener("click", () => {
 	const tab = tabs.get(activeTabId);
 	if (tab?.isHome) {
 		renderRecent();
+		renderBookmarks();
 	} else if (tab?.frame && tab?.url) {
-		// For Scramjet frames, use the frame's go method to reload
-		tab.frame.go(tab.url);
+		// For Scramjet frames, reload using the go method with current URL
+		loadingBar.hidden = false;
+		try {
+			tab.frame.go(tab.url);
+			console.log(`[Tab ${tab.id}] Reloading: ${tab.url}`);
+			setTimeout(() => {
+				loadingBar.hidden = true;
+			}, 2000);
+		} catch (err) {
+			console.error("Error reloading:", err);
+			loadingBar.hidden = true;
+			showError("Failed to reload page", err?.message);
+		}
 	} else if (tab?.frame) {
-		// Fallback for regular frames
-		tab.frame.frame.contentWindow?.location.reload();
+		// Fallback for frames without URL
+		try {
+			tab.frame.frame.contentWindow?.location.reload();
+		} catch (err) {
+			console.error("Error reloading frame:", err);
+		}
 	}
 });
 
@@ -1569,7 +1633,12 @@ newTabButton.addEventListener("click", () => {
 window.addEventListener("keydown", (event) => {
 	if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t") {
 		event.preventDefault();
-		createTab(null, true);
+		const maxTabs = typeof _CONFIG !== 'undefined' && _CONFIG?.ui?.maxTabs ? _CONFIG.ui.maxTabs : 20;
+		if (tabs.size < maxTabs) {
+			createTab(null, true);
+		} else {
+			showError(`Maximum ${maxTabs} tabs reached`);
+		}
 	}
 	if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "w") {
 		if (activeTabId && tabs.size > 1) {
@@ -1736,9 +1805,12 @@ omniboxSuggestions.addEventListener("click", (e) => {
 });
 
 loadSettings();
-renderRecent();
-renderBookmarks();
 createTab(null, true);
+idleCallback(() => {
+	renderRecent();
+	renderBookmarks();
+}, 200);
+scheduleScramjetWarmup();
 
 // Add bookmark button handler
 addBookmarkButton.addEventListener("click", () => {

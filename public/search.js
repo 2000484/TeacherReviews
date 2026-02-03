@@ -25,11 +25,12 @@ function search(input, template, options = {}) {
 	if (looksLikeSchemeUrl(trimmed)) {
 		try {
 			const url = new URL(trimmed);
-			// Whitelist safe protocols
-			if (!["http:", "https:", "ftp:"].includes(url.protocol)) {
-				console.warn(`Unsafe protocol: ${url.protocol}`);
+			// Whitelist safe protocols only
+			if (!['http:', 'https:', 'ftp:'].includes(url.protocol)) {
+				console.warn(`Blocked unsafe protocol: ${url.protocol}`);
 				return template.replace("%s", encodeURIComponent(trimmed));
 			}
+			// Prevent file:// and other dangerous protocols
 			return url.toString();
 		} catch (err) {
 			console.warn("Invalid URL scheme:", err);

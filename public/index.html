@@ -124,7 +124,7 @@
 					<input
 						id="sj-omnibox-input"
 						type="text"
-						placeholder="Search Google or type a URL"
+						placeholder="Search DuckDuckGo or type a URL"
 						autocomplete="off"
 						spellcheck="false"
 					/>
@@ -213,8 +213,8 @@
 				<main class="new-tab-content">
 					<section class="quick-access">
 						<div class="quick-grid">
-							<button class="tile" data-quick-url="https://google.com">
-								<span>Google</span>
+							<button class="tile" data-quick-url="https://duckduckgo.com">
+								<span>DuckDuckGo</span>
 							</button>
 							<button class="tile" data-quick-url="https://youtube.com">
 								<span>YouTube</span>
@@ -398,7 +398,7 @@
 							<label>
 								<span>Search engine</span>
 								<select id="sj-search-engine-select">
-									<option value="google">Google</option>
+
 									<option value="duckduckgo">DuckDuckGo</option>
 									<option value="brave">Brave</option>
 									<option value="startpage">Startpage</option>
@@ -410,7 +410,7 @@
 								<input
 									id="sj-search-engine"
 									type="text"
-									value="https://www.google.com/search?q=%s"
+									value="https://duckduckgo.com/?q=%s"
 								/>
 							</label>
 							<label class="toggle-label">
@@ -459,6 +459,19 @@
 								<button id="sj-reset-cloak" class="btn ghost" type="button">
 									Reset cloak
 								</button>
+							</div>
+						</div>
+					</div>
+
+					<div class="settings-section">
+						<h3>Privacy & Storage</h3>
+						<div class="settings-grid">
+							<p class="settings-description">Clear all proxy cache, cookies, and temporary data from the proxy server.</p>
+							<div class="settings-actions">
+								<button id="sj-clear-cache" class="btn danger" type="button">
+									Clear all proxy data
+								</button>
+								<span id="sj-clear-status" class="clear-status" hidden></span>
 							</div>
 						</div>
 					</div>

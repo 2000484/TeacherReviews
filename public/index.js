@@ -55,6 +55,7 @@ const homeContent = document.getElementById("sj-home-content");
 const appsContent = document.getElementById("sj-apps-content");
 const gamesContent = document.getElementById("sj-games-content");
 const chatContent = document.getElementById("sj-chat-content");
+const gamesGrid = document.getElementById("sj-games-grid");
 
 // Chat elements
 const chatMessages = document.getElementById("sj-chat-messages");
@@ -68,6 +69,25 @@ let lastMessageTime = 0;
 const MESSAGE_COOLDOWN = 10000; // 10 seconds in milliseconds
 const usedNames = new Set();
 let currentUserName = "";
+const CHAT_CACHE_KEY = "sj-chat-cache";
+const CHAT_RECONNECT_BASE = 2000;
+const CHAT_RECONNECT_MAX = 15000;
+const CHAT_POLL_INTERVAL = 3000;
+let chatSocket = null;
+let chatReconnectDelay = CHAT_RECONNECT_BASE;
+let chatReconnectTimer = null;
+let chatPollTimer = null;
+let chatLastTimestamp = 0;
+
+const chatClientId = (() => {
+	const existing = sessionStorage.getItem("sj-chat-client-id");
+	if (existing) return existing;
+	const generated = typeof crypto !== "undefined" && crypto.randomUUID
+		? crypto.randomUUID()
+		: `sj-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+	sessionStorage.setItem("sj-chat-client-id", generated);
+	return generated;
+})();
 
 // Initialize activeFrame and homeButton variables (for legacy frame handling)
 let activeFrame = null;
@@ -140,6 +160,16 @@ async function ensureScramjet() {
 						// Make requests look direct
 						const originalFetch = window.fetch;
 						window.fetch = function(...args) {
+							const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+							
+							// For auth.hbomax.com, open in new window instead of proxying
+							if (typeof url === 'string' && url.includes('auth.hbomax.com')) {
+								console.log('[Injection] Blocking fetch to auth.hbomax.com:', url);
+								window.open(url, 'hbomax_auth', 'width=500,height=700,menubar=no,toolbar=no');
+								return Promise.reject(new Error('Opening auth in new window'));
+							}
+							
+							// For other requests, remove proxy-revealing headers
 							if (args[1]) {
 								args[1].headers = args[1].headers || {};
 								delete args[1].headers['x-forwarded-for'];
@@ -147,6 +177,17 @@ async function ensureScramjet() {
 								delete args[1].headers['via'];
 							}
 							return originalFetch.apply(this, args);
+						};
+						
+						// Intercept XMLHttpRequest to auth.hbomax.com
+						const originalOpen = XMLHttpRequest.prototype.open;
+						XMLHttpRequest.prototype.open = function(method, url, ...args) {
+							if (typeof url === 'string' && url.includes('auth.hbomax.com')) {
+								console.log('[Injection] Blocking XHR to auth.hbomax.com:', url);
+								window.open(url, 'hbomax_auth', 'width=500,height=700,menubar=no,toolbar=no');
+								throw new Error('Opening auth in new window');
+							}
+							return originalOpen.apply(this, [method, url, ...args]);
 						};
 					`,
 				},
@@ -201,6 +242,20 @@ function toScramjetUrl(url) {
 		return `/spotify-proxy/${encodeURIComponent(url)}`;
 	}
 	return `/scramjet/${encodeURIComponent(url)}`;
+}
+
+function normalizeProxyUrl(url) {
+	try {
+		const parsed = new URL(url);
+		const host = parsed.hostname.toLowerCase();
+		if (host === "geofs.com" || host === "www.geofs.com") {
+			parsed.hostname = "geo-fs.com";
+			return parsed.toString();
+		}
+	} catch (err) {
+		return url;
+	}
+	return url;
 }
 
 let tabIdCounter = 0;
@@ -841,6 +896,7 @@ function createTab(url = null, isHome = true) {
 		title: isHome ? "New Tab" : "Loading...",
 		favicon: defaultFavicon || "/favicon.ico",
 		isHome,
+		homeSection: isHome ? "home" : null,
 		frame: null,
 		element: null,
 		wrapper: null,
@@ -987,6 +1043,7 @@ function switchTab(id) {
 	if (tab.isHome) {
 		homePage.hidden = false;
 		loadingBar.hidden = true;
+		applyHomeSection(tab.homeSection || "home");
 	} else {
 		homePage.hidden = true;
 		if (tab.wrapper) {
@@ -1221,8 +1278,9 @@ async function loadUrlInTab(id, url) {
 	updateTabUI(id);
 
 	try {
+		// Pass raw URL to Scramjet - it handles proxying internally via BareMux
 		tab.frame.go(url);
-		tab.url = url; // Ensure tab URL is updated immediately
+		tab.url = url; // Keep original URL in tab object
 		
 		// Initialize navigation history immediately
 		if (tab.navigationHistory.length === 0) {
@@ -1355,28 +1413,39 @@ async function ensureTransport() {
 	if (isTransportReady) return;
 
 	setBadge(transportStatus, "Transport: connecting", "warn");
-	const wispUrl =
+	const websocketBase =
 		(location.protocol === "https:" ? "wss" : "ws") +
 		"://" +
-		location.host +
-		"/wisp/";
+		location.host;
+	const wispUrl = `${websocketBase}/wisp/`;
 
+	// Prefer WISP-only libcurl transport to avoid wsproxy ArrayBuffer issues.
 	try {
 		const currentTransport = await connection.getTransport();
-		
-		if (currentTransport !== "/libcurl/index.mjs") {
-			console.log("Initializing libcurl transport with wisp:", wispUrl);
-			
-			await connection.setTransport("/libcurl/index.mjs", [
-				{ 
-					wisp: wispUrl,
-				}
-			]);
-			console.log("Transport: libcurl+wisp initialized successfully");
+		if (currentTransport !== "epoxy-patched") {
+			console.log("Initializing epoxy transport with wisp:", wispUrl);
+			await connection.setManualTransport(
+				`
+					const { default: EpoxyTransport } = await import("/epoxy/index.mjs");
+					class PatchedEpoxyTransport extends EpoxyTransport {
+						async request(remote, method, body, headers, signal) {
+							let normalizedHeaders = headers;
+							if (headers && !headers[Symbol.iterator] && typeof headers === "object") {
+								normalizedHeaders = Object.entries(headers);
+							}
+							return super.request(remote, method, body, normalizedHeaders, signal);
+						}
+					}
+					return [PatchedEpoxyTransport, "epoxy-patched"];
+				`,
+				[{ wisp: wispUrl }]
+			);
+			console.log("Transport: epoxy+wisp initialized successfully");
 		}
 
 		isTransportReady = true;
 		setBadge(transportStatus, "Transport: ready", "good");
+		return;
 	} catch (err) {
 		console.error("Failed to initialize transport:", err);
 		console.error("Error details:", err?.message, err?.stack);
@@ -1486,6 +1555,8 @@ omniboxForm.addEventListener("submit", async (event) => {
 		showError("Failed to process your input.", err?.message || String(err));
 		return;
 	}
+
+	url = normalizeProxyUrl(url);
 
 	if (!url) {
 		showError("Unable to build a URL from that input.");
@@ -1768,6 +1839,15 @@ quickLinks.forEach((link) => {
 	});
 });
 
+homePage.addEventListener("click", (event) => {
+	const tile = event.target.closest("a.app-tile, a.game-tile");
+	if (!tile) return;
+	const url = tile.getAttribute("href");
+	if (!url) return;
+	event.preventDefault();
+	openProxyUrl(url, { newTab: true });
+});
+
 // Context menu handlers
 tabContextMenu.querySelectorAll("[data-action]").forEach((btn) => {
 	btn.addEventListener("click", (e) => {
@@ -1864,6 +1944,7 @@ omniboxSuggestions.addEventListener("click", (e) => {
 });
 
 loadSettings();
+renderGames();
 createTab(null, true);
 idleCallback(() => {
 	renderRecent();
@@ -1905,26 +1986,206 @@ if (clearHistoryButton) {
 	clearHistoryButton.addEventListener("click", clearAllRecent);
 }
 
-// Home navigation functionality
-function switchHomeTab(tab) {
-	homeContent.hidden = tab !== "home";
-	appsContent.hidden = tab !== "apps";
-	gamesContent.hidden = tab !== "games";
-	chatContent.hidden = tab !== "chat";
+function applyHomeSection(section) {
+	homeContent.hidden = section !== "home";
+	appsContent.hidden = section !== "apps";
+	gamesContent.hidden = section !== "games";
+	chatContent.hidden = section !== "chat";
 
 	homeNavButtons.forEach((btn) => {
-		btn.classList.toggle("active", btn.getAttribute("data-nav") === tab);
+		btn.classList.toggle("active", btn.getAttribute("data-nav") === section);
 	});
+}
+
+function setHomeSection(section, tabId = activeTabId) {
+	const tab = tabs.get(tabId);
+	if (!tab || !tab.isHome) return;
+	tab.homeSection = section;
+	applyHomeSection(section);
 }
 
 homeNavButtons.forEach((btn) => {
 	btn.addEventListener("click", () => {
-		switchHomeTab(btn.getAttribute("data-nav"));
+		setHomeSection(btn.getAttribute("data-nav"));
 	});
 });
 
+async function openProxyUrl(rawUrl, { newTab = true } = {}) {
+	if (!rawUrl) return;
+	let url = rawUrl;
+	try {
+		url = search(rawUrl, getTemplate(), {
+			autoHttps: autoHttpsToggle.checked,
+		});
+	} catch (err) {
+		showError("Failed to process the URL.", err?.message || String(err));
+		return;
+	}
+
+	url = normalizeProxyUrl(url);
+
+	if (!url) {
+		showError("Unable to build a URL from that input.");
+		return;
+	}
+
+	try {
+		await ensureSW();
+	} catch (err) {
+		setBadge(swStatus, "Service worker: failed", "bad");
+		showError("Failed to register service worker.", err?.message || String(err));
+		return;
+	}
+
+	try {
+		await ensureTransport();
+	} catch (err) {
+		setBadge(transportStatus, "Transport: failed", "bad");
+		showError("Transport setup failed. Check your connection.", err?.message || String(err));
+		return;
+	}
+
+	const currentTab = tabs.get(activeTabId);
+	if (newTab) {
+		const newTabId = createTab(url, false);
+		if (!newTabId && currentTab && !currentTab.isHome) {
+			await loadUrlInTab(activeTabId, url);
+		}
+	} else if (currentTab?.isHome) {
+		await loadUrlInTab(activeTabId, url);
+	}
+
+	addRecent(url);
+}
+
+function renderGames() {
+	if (!gamesGrid) return;
+
+	const games = [
+		{ name: "Run 3", url: "https://www.coolmathgames.com/0-run-3", source: "Coolmath" },
+		{ name: "Run 2", url: "https://www.coolmathgames.com/0-run-2", source: "Coolmath" },
+		{ name: "Run", url: "https://www.coolmathgames.com/0-run", source: "Coolmath" },
+		{ name: "Fireboy & Watergirl: Forest Temple", url: "https://www.coolmathgames.com/0-fireboy-and-watergirl-forest-temple", source: "Coolmath" },
+		{ name: "Fireboy & Watergirl: Ice Temple", url: "https://www.coolmathgames.com/0-fireboy-and-watergirl-ice-temple", source: "Coolmath" },
+		{ name: "Fireboy & Watergirl: Crystal Temple", url: "https://www.coolmathgames.com/0-fireboy-and-watergirl-crystal-temple", source: "Coolmath" },
+		{ name: "Fireboy & Watergirl: Light Temple", url: "https://www.coolmathgames.com/0-fireboy-and-watergirl-light-temple", source: "Coolmath" },
+		{ name: "Fireboy & Watergirl: Elements", url: "https://www.coolmathgames.com/0-fireboy-and-watergirl-elements", source: "Coolmath" },
+		{ name: "World's Hardest Game", url: "https://www.coolmathgames.com/0-worlds-hardest-game", source: "Coolmath" },
+		{ name: "World's Hardest Game 2", url: "https://www.coolmathgames.com/0-worlds-hardest-game-2", source: "Coolmath" },
+		{ name: "Bloxorz", url: "https://www.coolmathgames.com/0-bloxorz", source: "Coolmath" },
+		{ name: "2048", url: "https://www.coolmathgames.com/0-2048", source: "Coolmath" },
+		{ name: "Moto X3M", url: "https://www.coolmathgames.com/0-moto-x3m", source: "Coolmath" },
+		{ name: "Moto X3M 2", url: "https://www.coolmathgames.com/0-moto-x3m-2", source: "Coolmath" },
+		{ name: "Moto X3M 3", url: "https://www.coolmathgames.com/0-moto-x3m-3", source: "Coolmath" },
+		{ name: "Moto X3M Winter", url: "https://www.coolmathgames.com/0-moto-x3m-4-winter", source: "Coolmath" },
+		{ name: "Moto X3M Pool Party", url: "https://www.coolmathgames.com/0-moto-x3m-5-pool-party", source: "Coolmath" },
+		{ name: "Moto X3M Spooky Land", url: "https://www.coolmathgames.com/0-moto-x3m-6-spooky-land", source: "Coolmath" },
+		{ name: "Tiny Fishing", url: "https://www.coolmathgames.com/0-tiny-fishing", source: "Coolmath" },
+		{ name: "Duck Life", url: "https://www.coolmathgames.com/0-duck-life", source: "Coolmath" },
+		{ name: "Duck Life 2", url: "https://www.coolmathgames.com/0-duck-life-2", source: "Coolmath" },
+		{ name: "Duck Life 3", url: "https://www.coolmathgames.com/0-duck-life-3", source: "Coolmath" },
+		{ name: "Duck Life 4", url: "https://www.coolmathgames.com/0-duck-life-4", source: "Coolmath" },
+		{ name: "Sugar, Sugar", url: "https://www.coolmathgames.com/0-sugar-sugar", source: "Coolmath" },
+		{ name: "Sugar, Sugar 2", url: "https://www.coolmathgames.com/0-sugar-sugar-2", source: "Coolmath" },
+		{ name: "Sugar, Sugar 3", url: "https://www.coolmathgames.com/0-sugar-sugar-3", source: "Coolmath" },
+		{ name: "Papa's Pizzeria", url: "https://www.coolmathgames.com/0-papas-pizzeria", source: "Coolmath" },
+		{ name: "Papa's Freezeria", url: "https://www.coolmathgames.com/0-papas-freezeria", source: "Coolmath" },
+		{ name: "Papa's Burgeria", url: "https://www.coolmathgames.com/0-papas-burgeria", source: "Coolmath" },
+		{ name: "Papa's Taco Mia", url: "https://www.coolmathgames.com/0-papas-taco-mia", source: "Coolmath" },
+		{ name: "Papa's Hot Doggeria", url: "https://www.coolmathgames.com/0-papas-hot-doggeria", source: "Coolmath" },
+		{ name: "Papa's Pancakeria", url: "https://www.coolmathgames.com/0-papas-pancakeria", source: "Coolmath" },
+		{ name: "Papa's Sushiria", url: "https://www.coolmathgames.com/0-papas-sushiria", source: "Coolmath" },
+		{ name: "Papa's Donuteria", url: "https://www.coolmathgames.com/0-papas-donuteria", source: "Coolmath" },
+		{ name: "Papa's Cupcakeria", url: "https://www.coolmathgames.com/0-papas-cupcakeria", source: "Coolmath" },
+		{ name: "Papa's Bakeria", url: "https://www.coolmathgames.com/0-papas-bakeria", source: "Coolmath" },
+		{ name: "Papa's Wingeria", url: "https://www.coolmathgames.com/0-papas-wingeria", source: "Coolmath" },
+		{ name: "Papa's Pastaria", url: "https://www.coolmathgames.com/0-papas-pastaria", source: "Coolmath" },
+		{ name: "Papa's Cheeseria", url: "https://www.coolmathgames.com/0-papas-cheeseria", source: "Coolmath" },
+		{ name: "Red Ball 4", url: "https://www.coolmathgames.com/0-red-ball-4", source: "Coolmath" },
+		{ name: "Subway Surfers", url: "https://poki.com/en/g/subway-surfers", source: "Poki" },
+		{ name: "Temple Run 2", url: "https://poki.com/en/g/temple-run-2", source: "Poki" },
+		{ name: "Drive Mad", url: "https://poki.com/en/g/drive-mad", source: "Poki" },
+		{ name: "Smash Karts", url: "https://poki.com/en/g/smash-karts", source: "Poki" },
+		{ name: "Stickman Hook", url: "https://poki.com/en/g/stickman-hook", source: "Poki" },
+		{ name: "Basketball Stars", url: "https://poki.com/en/g/basketball-stars", source: "Poki" },
+		{ name: "Football Legends 2021", url: "https://poki.com/en/g/football-legends-2021", source: "Poki" },
+		{ name: "Rooftop Snipers", url: "https://poki.com/en/g/rooftop-snipers", source: "Poki" },
+		{ name: "Vex 7", url: "https://poki.com/en/g/vex-7", source: "Poki" },
+		{ name: "Vex 8", url: "https://poki.com/en/g/vex-8", source: "Poki" },
+		{ name: "Moto X3M (Poki)", url: "https://poki.com/en/g/moto-x3m", source: "Poki" },
+		{ name: "Moto X3M 2 (Poki)", url: "https://poki.com/en/g/moto-x3m-2", source: "Poki" },
+		{ name: "Moto X3M 3 (Poki)", url: "https://poki.com/en/g/moto-x3m-3", source: "Poki" },
+		{ name: "Moto X3M Winter (Poki)", url: "https://poki.com/en/g/moto-x3m-winter", source: "Poki" },
+		{ name: "Moto X3M Pool Party (Poki)", url: "https://poki.com/en/g/moto-x3m-pool-party", source: "Poki" },
+		{ name: "Slope", url: "https://poki.com/en/g/slope", source: "Poki" },
+		{ name: "Penalty Kick Online", url: "https://poki.com/en/g/penalty-kick-online", source: "Poki" },
+		{ name: "Red Ball 4 (Poki)", url: "https://poki.com/en/g/red-ball-4", source: "Poki" },
+		{ name: "Drift Boss", url: "https://poki.com/en/g/drift-boss", source: "Poki" },
+		{ name: "Getaway Shootout", url: "https://poki.com/en/g/getaway-shootout", source: "Poki" },
+		{ name: "Krunker", url: "https://www.crazygames.com/game/krunker-io", source: "CrazyGames" },
+		{ name: "Shell Shockers", url: "https://www.crazygames.com/game/shell-shockers", source: "CrazyGames" },
+		{ name: "BuildNow GG", url: "https://www.crazygames.com/game/buildnow-gg", source: "CrazyGames" },
+		{ name: "1v1.LOL", url: "https://www.crazygames.com/game/1v1-lol", source: "CrazyGames" },
+		{ name: "Basket Random", url: "https://www.crazygames.com/game/basket-random", source: "CrazyGames" },
+		{ name: "Football Legends", url: "https://www.crazygames.com/game/football-legends", source: "CrazyGames" },
+		{ name: "Drift Hunters", url: "https://www.crazygames.com/game/drift-hunters", source: "CrazyGames" },
+		{ name: "Madalin Stunt Cars 2", url: "https://www.crazygames.com/game/madalin-stunt-cars-2", source: "CrazyGames" },
+		{ name: "Madalin Stunt Cars 3", url: "https://www.crazygames.com/game/madalin-stunt-cars-3", source: "CrazyGames" },
+		{ name: "Bullet Force", url: "https://www.crazygames.com/game/bullet-force", source: "CrazyGames" },
+		{ name: "Zombs Royale", url: "https://www.crazygames.com/game/zombs-royale", source: "CrazyGames" },
+		{ name: "Paper.io 2", url: "https://www.crazygames.com/game/paper-io-2", source: "CrazyGames" },
+		{ name: "Hole.io", url: "https://www.crazygames.com/game/hole-io", source: "CrazyGames" },
+		{ name: "EvoWars.io", url: "https://www.crazygames.com/game/evowars-io", source: "CrazyGames" },
+		{ name: "Worms Zone", url: "https://www.crazygames.com/game/worms-zone", source: "CrazyGames" },
+		{ name: "Narrow.One", url: "https://www.crazygames.com/game/narrow-one", source: "CrazyGames" },
+		{ name: "Bloxd.io", url: "https://www.crazygames.com/game/bloxd-io", source: "CrazyGames" },
+		{ name: "Snow Rider 3D", url: "https://www.crazygames.com/game/snow-rider-3d", source: "CrazyGames" },
+		{ name: "Parkour Block 3D", url: "https://www.crazygames.com/game/parkour-block-3d", source: "CrazyGames" },
+		{ name: "Stickman Hook (CrazyGames)", url: "https://www.crazygames.com/game/stickman-hook", source: "CrazyGames" },
+		{ name: "Kingdom Rush", url: "https://www.kongregate.com/games/ironhidegames/kingdom-rush", source: "Kongregate" },
+		{ name: "Kingdom Rush Frontiers", url: "https://www.kongregate.com/games/ironhidegames/kingdom-rush-frontiers", source: "Kongregate" },
+		{ name: "GemCraft", url: "https://www.kongregate.com/games/gameinabottle/gemcraft", source: "Kongregate" },
+		{ name: "Learn to Fly", url: "https://www.kongregate.com/games/light_bringer777/learn-to-fly", source: "Kongregate" },
+		{ name: "Learn to Fly 2", url: "https://www.kongregate.com/games/light_bringer777/learn-to-fly-2", source: "Kongregate" },
+		{ name: "Bloons TD", url: "https://www.kongregate.com/games/ninjakiwi/bloons-td", source: "Kongregate" },
+		{ name: "Bloons TD 5", url: "https://www.kongregate.com/games/ninjakiwi/bloons-td-5", source: "Kongregate" },
+		{ name: "Bad Ice-Cream", url: "https://www.kongregate.com/games/nitrome/bad-ice-cream", source: "Kongregate" },
+		{ name: "Bad Ice-Cream 2", url: "https://www.kongregate.com/games/nitrome/bad-ice-cream-2", source: "Kongregate" },
+		{ name: "Bad Ice-Cream 3", url: "https://www.kongregate.com/games/nitrome/bad-ice-cream-3", source: "Kongregate" },
+		{ name: "The Last Stand", url: "https://armorgames.com/play/269/the-last-stand", source: "Armor Games" },
+		{ name: "The Last Stand 2", url: "https://armorgames.com/play/1443/the-last-stand-2", source: "Armor Games" },
+		{ name: "The Last Stand: Union City", url: "https://armorgames.com/play/5785/the-last-stand-union-city", source: "Armor Games" },
+		{ name: "StrikeForce Kitty", url: "https://armorgames.com/play/12870/strikeforce-kitty", source: "Armor Games" },
+		{ name: "StrikeForce Kitty 2", url: "https://armorgames.com/play/13765/strikeforce-kitty-2", source: "Armor Games" },
+		{ name: "8 Ball Pool", url: "https://www.miniclip.com/games/8-ball-pool-multiplayer/en/", source: "Miniclip" },
+		{ name: "Agar.io", url: "https://www.miniclip.com/games/agar-io/en/", source: "Miniclip" },
+		{ name: "Basketball Stars (Miniclip)", url: "https://www.miniclip.com/games/basketball-stars/en/", source: "Miniclip" },
+		{ name: "Soccer Stars", url: "https://www.miniclip.com/games/soccer-stars/en/", source: "Miniclip" },
+		{ name: "Mini Golf King", url: "https://www.miniclip.com/games/mini-golf-king/en/", source: "Miniclip" },
+	];
+
+	gamesGrid.innerHTML = "";
+	games.forEach((game) => {
+		const tile = document.createElement("a");
+		tile.className = "game-tile";
+		tile.href = game.url;
+		tile.setAttribute("data-source", game.source);
+
+		const icon = document.createElement("div");
+		icon.className = "game-icon";
+		icon.textContent = game.source === "Coolmath" ? "🧩" : "🎮";
+
+		const name = document.createElement("span");
+		name.textContent = game.name;
+
+		tile.appendChild(icon);
+		tile.appendChild(name);
+		gamesGrid.appendChild(tile);
+	});
+}
+
 // Chat functionality
-function sendChatMessage() {
+async function sendChatMessage() {
 	const name = chatNameInput.value.trim();
 	const message = chatInput.value.trim();
 
@@ -1961,27 +2222,31 @@ function sendChatMessage() {
 		return;
 	}
 
-	// Add message to chat
-	const messageEl = document.createElement("div");
-	messageEl.className = "chat-message own";
-	messageEl.innerHTML = `
-		<div>
-			<div class="chat-message-author">${name}</div>
-			<div class="chat-message-text">${escapeHtml(message)}</div>
-		</div>
-	`;
-	chatMessages.appendChild(messageEl);
-	chatMessages.scrollTop = chatMessages.scrollHeight;
+	if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+		setChatStatus("Chat is disconnected. Trying fallback...", "warning");
+		connectChatSocket();
+		const fallbackOk = await sendChatFallback(name, message);
+		if (!fallbackOk) return;
 
-	// Save message to localStorage
-	const chatHistory = JSON.parse(localStorage.getItem("chatHistory") || "[]");
-	chatHistory.push({
-		name,
-		message,
-		timestamp: now,
-		own: true,
-	});
-	localStorage.setItem("chatHistory", JSON.stringify(chatHistory));
+		// Reset input
+		chatInput.value = "";
+		chatStatus.textContent = "✓ Message sent";
+		chatStatus.style.color = "var(--success)";
+		setTimeout(() => (chatStatus.textContent = ""), 2000);
+		lastMessageTime = now;
+		return;
+	}
+
+	if (chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+		chatSocket.send(
+			JSON.stringify({
+				type: "message",
+				name,
+				message,
+				clientId: chatClientId,
+			})
+		);
+	}
 
 	// Reset input
 	chatInput.value = "";
@@ -1998,24 +2263,182 @@ function escapeHtml(text) {
 	return div.innerHTML;
 }
 
-function loadChatHistory() {
-	const chatHistory = JSON.parse(localStorage.getItem("chatHistory") || "[]");
-	chatMessages.innerHTML = "";
+function appendChatMessage(msg) {
+	const isOwn = msg.clientId && msg.clientId === chatClientId;
+	const messageEl = document.createElement("div");
+	messageEl.className = `chat-message ${isOwn ? "own" : ""}`;
+	messageEl.innerHTML = `
+		<div>
+			<div class="chat-message-author">${escapeHtml(msg.name)}</div>
+			<div class="chat-message-text">${escapeHtml(msg.message)}</div>
+		</div>
+	`;
+	chatMessages.appendChild(messageEl);
+	chatMessages.scrollTop = chatMessages.scrollHeight;
+	if (typeof msg.timestamp === "number" && msg.timestamp > chatLastTimestamp) {
+		chatLastTimestamp = msg.timestamp;
+	}
 
-	chatHistory.forEach((msg) => {
-		const messageEl = document.createElement("div");
-		messageEl.className = `chat-message ${msg.own ? "own" : ""}`;
-		messageEl.innerHTML = `
-			<div>
-				<div class="chat-message-author">${escapeHtml(msg.name)}</div>
-				<div class="chat-message-text">${escapeHtml(msg.message)}</div>
-			</div>
-		`;
-		chatMessages.appendChild(messageEl);
+	const cached = JSON.parse(localStorage.getItem(CHAT_CACHE_KEY) || "[]");
+	cached.push({
+		name: msg.name,
+		message: msg.message,
+		timestamp: msg.timestamp,
+		clientId: msg.clientId || "",
+	});
+	if (cached.length > 100) cached.splice(0, cached.length - 100);
+	localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(cached));
+}
+
+function renderChatHistory(messages) {
+	chatMessages.innerHTML = "";
+	messages.forEach((msg) => appendChatMessage(msg));
+	const latest = messages.reduce((max, msg) => (
+		typeof msg.timestamp === "number" && msg.timestamp > max ? msg.timestamp : max
+	), 0);
+	chatLastTimestamp = Math.max(chatLastTimestamp, latest);
+}
+
+function loadChatHistory() {
+	const cached = JSON.parse(localStorage.getItem(CHAT_CACHE_KEY) || "[]");
+	if (cached.length) {
+		renderChatHistory(cached);
+	}
+}
+
+function setChatStatus(text, tone) {
+	chatStatus.textContent = text;
+	if (!tone) {
+		chatStatus.style.color = "";
+		return;
+	}
+	const colorMap = {
+		success: "var(--success)",
+		warning: "var(--warning)",
+		danger: "var(--danger)",
+	};
+	chatStatus.style.color = colorMap[tone] || "";
+}
+
+function scheduleChatReconnect() {
+	if (chatReconnectTimer) return;
+	chatReconnectTimer = setTimeout(() => {
+		chatReconnectTimer = null;
+		chatReconnectDelay = Math.min(chatReconnectDelay * 1.5, CHAT_RECONNECT_MAX);
+		connectChatSocket();
+	}, chatReconnectDelay);
+}
+
+function startChatPolling() {
+	if (chatPollTimer) return;
+	setChatStatus("Polling for updates...", "warning");
+	chatPollTimer = setInterval(() => {
+		pollChatMessages();
+	}, CHAT_POLL_INTERVAL);
+}
+
+function stopChatPolling() {
+	if (!chatPollTimer) return;
+	clearInterval(chatPollTimer);
+	chatPollTimer = null;
+}
+
+async function pollChatMessages() {
+	try {
+		const response = await fetch(`/api/chat/messages?since=${chatLastTimestamp}`, {
+			cache: "no-store",
+		});
+		if (!response.ok) return;
+		const data = await response.json();
+		if (!data || !Array.isArray(data.messages)) return;
+		data.messages.forEach((msg) => appendChatMessage(msg));
+	} catch {
+		setChatStatus("Polling failed", "danger");
+	}
+}
+
+async function sendChatFallback(name, message) {
+	try {
+		const response = await fetch("/api/chat/send", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				name,
+				message,
+				clientId: chatClientId,
+			}),
+		});
+		if (!response.ok) {
+			setChatStatus("Message failed to send", "danger");
+			return false;
+		}
+		const data = await response.json();
+		if (data?.message) {
+			appendChatMessage(data.message);
+		}
+		return true;
+	} catch {
+		setChatStatus("Message failed to send", "danger");
+		return false;
+	}
+}
+
+function connectChatSocket() {
+	if (chatSocket && (chatSocket.readyState === WebSocket.OPEN || chatSocket.readyState === WebSocket.CONNECTING)) {
+		return;
+	}
+
+	const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+	const wsUrl = `${protocol}://${window.location.host}/chat`;
+	chatSocket = new WebSocket(wsUrl);
+	setChatStatus("Connecting...", "warning");
+
+	chatSocket.addEventListener("open", () => {
+		chatReconnectDelay = CHAT_RECONNECT_BASE;
+		stopChatPolling();
+		setChatStatus("Connected", "success");
+		setTimeout(() => setChatStatus(""), 1500);
 	});
 
-	chatMessages.scrollTop = chatMessages.scrollHeight;
+	chatSocket.addEventListener("message", (event) => {
+		let payload;
+		try {
+			payload = JSON.parse(event.data);
+		} catch {
+			return;
+		}
+
+		if (payload.type === "history" && Array.isArray(payload.messages)) {
+			renderChatHistory(payload.messages);
+			localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(payload.messages));
+			return;
+		}
+
+		if (payload.type === "message" && payload.message) {
+			appendChatMessage(payload.message);
+		}
+	});
+
+	chatSocket.addEventListener("close", () => {
+		startChatPolling();
+		setChatStatus("Disconnected. Retrying...", "warning");
+		scheduleChatReconnect();
+	});
+
+	chatSocket.addEventListener("error", () => {
+		setChatStatus("Connection error", "danger");
+	});
 }
+
+document.addEventListener("visibilitychange", () => {
+	if (document.visibilityState === "visible") {
+		connectChatSocket();
+	}
+});
+
+window.addEventListener("online", () => {
+	connectChatSocket();
+});
 
 // Chat event listeners
 chatSendButton.addEventListener("click", sendChatMessage);
@@ -2027,4 +2450,5 @@ chatInput.addEventListener("keypress", (e) => {
 
 // Load chat history on startup
 loadChatHistory();
+connectChatSocket();
 

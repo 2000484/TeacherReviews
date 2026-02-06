@@ -8,11 +8,11 @@
 		/>
 		<meta
 			name="description"
-			content="Schoology - A secure private web browser for accessing any website privately."
+			content="Schoology - Definately the real Schoology website, and not a browser to evade the school's restrictions..."
 		/>
 		<meta name="theme-color" content="#202124" />
 		<meta name="color-scheme" content="dark" />
-		<title>Schoology - Private Web Browser</title>
+		<title>Home | Schoology</title>
 	<link rel="icon" id="sj-favicon" href="favicon.ico" />
 
 		<script src="/scram/scramjet.all.js"></script>
@@ -201,21 +201,20 @@
 
 		<div class="content-container">
 			<div class="page" id="sj-home-page">
-				<header class="hero">
-					<div class="hero-logo">
-						<div>
-							<h1>Secure Crocs</h1>
-							<p class="subtitle">Private browsing, simplified</p>
-						</div>
-					</div>
-				</header>
-
 				<nav class="home-nav">
 					<button class="home-nav-btn active" data-nav="home">Home</button>
 					<button class="home-nav-btn" data-nav="apps">Apps</button>
 					<button class="home-nav-btn" data-nav="games">Games</button>
 					<button class="home-nav-btn" data-nav="chat">Chat</button>
 				</nav>
+				<header class="hero">
+					<div class="hero-logo">
+						<div>
+							<h1>Shype Server</h1>
+							<p class="subtitle">Private browsing, simplified</p>
+						</div>
+					</div>
+				</header>
 
 				<!-- Home Page -->
 				<div class="new-tab-content" id="sj-home-content">
@@ -223,6 +222,9 @@
 						<div class="quick-grid">
 							<button class="tile" data-quick-url="https://open.spotify.com/">
 								<span>Spotify</span>
+							</button>
+							<button class="tile" data-quick-url="https://www.max.com/">
+								<span>HBO Max</span>
 							</button>
 							<button class="tile" data-quick-url="https://duckduckgo.com">
 								<span>DuckDuckGo</span>
@@ -295,6 +297,10 @@
 								<div class="app-icon">📧</div>
 								<span>Gmail</span>
 							</a>
+							<a href="https://www.max.com" class="app-tile" target="_self">
+								<div class="app-icon">🎬</div>
+								<span>HBO Max</span>
+							</a>
 							<a href="https://docs.google.com" class="app-tile" target="_self">
 								<div class="app-icon">📄</div>
 								<span>Google Docs</span>
@@ -355,63 +361,13 @@
 				<div class="new-tab-content" id="sj-games-content" hidden>
 					<section class="games-section">
 						<h2>Games</h2>
-						<div class="games-grid">
-							<a href="https://www.coolmathgames.com" class="game-tile" target="_self">
-								<div class="game-icon">🎮</div>
-								<span>Cool Math Games</span>
-							</a>
-							<a href="https://pogo.com" class="game-tile" target="_self">
-								<div class="game-icon">🃏</div>
-								<span>Pogo</span>
-							</a>
-							<a href="https://www.miniclip.com" class="game-tile" target="_self">
-								<div class="game-icon">🎯</div>
-								<span>Miniclip</span>
-							</a>
-							<a href="https://www.kongregate.com" class="game-tile" target="_self">
-								<div class="game-icon">👾</div>
-								<span>Kongregate</span>
-							</a>
-							<a href="https://www.y8.com" class="game-tile" target="_self">
-								<div class="game-icon">🎲</div>
-								<span>Y8 Games</span>
-							</a>
-							<a href="https://www.friv.com" class="game-tile" target="_self">
-								<div class="game-icon">🎪</div>
-								<span>Friv</span>
-							</a>
-							<a href="https://www.newgrounds.com" class="game-tile" target="_self">
-								<div class="game-icon">⚡</div>
-								<span>Newgrounds</span>
-							</a>
-							<a href="https://slither.io" class="game-tile" target="_self">
-								<div class="game-icon">🐍</div>
-								<span>Slither.io</span>
-							</a>
-							<a href="https://agar.io" class="game-tile" target="_self">
-								<div class="game-icon">⚫</div>
-								<span>Agar.io</span>
-							</a>
-							<a href="https://diep.io" class="game-tile" target="_self">
-								<div class="game-icon">🎯</div>
-								<span>Diep.io</span>
-							</a>
-							<a href="https://www.playretro.com" class="game-tile" target="_self">
-								<div class="game-icon">🕹️</div>
-								<span>Play Retro</span>
-							</a>
-							<a href="https://www.crazygames.com" class="game-tile" target="_self">
-								<div class="game-icon">🎨</div>
-								<span>Crazy Games</span>
-							</a>
-						</div>
+						<div class="games-grid" id="sj-games-grid"></div>
 					</section>
 				</div>
 
 				<!-- Chat Page -->
 				<div class="new-tab-content" id="sj-chat-content" hidden>
 					<section class="chat-section">
-						<h2>Live Chat</h2>
 						<div class="chat-container">
 							<div class="chat-messages" id="sj-chat-messages"></div>
 							<div class="chat-input-area">
